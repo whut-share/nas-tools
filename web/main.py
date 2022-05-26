@@ -14,8 +14,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 import log
 from message.channel.wechat import WeChat
+from pt.douban import DouBan
 from pt.sites import Sites
-from rmt.doubanv2api.douban import Douban
+from rmt.doubanv2api.doubanapi import DoubanApi
 from service.sync import Sync
 from service.run import stop_monitor, restart_monitor
 from pt.client.qbittorrent import Qbittorrent
@@ -29,13 +30,8 @@ from pt.media_server import MediaServer
 from rmt.metainfo import MetaInfo
 from pt.mediaserver.jellyfin import Jellyfin
 from pt.mediaserver.plex import Plex
-from service.tasks.autoremove_torrents import AutoRemoveTorrents
-from service.tasks.douban_sync import DoubanSync
-from service.tasks.pt_signin import PTSignin
-from service.tasks.pt_transfer import PTTransfer
-from service.tasks.rss_download import RSSDownloader
 from message.send import Message
-from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, LOG_QUEUE
+from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, LOG_QUEUE, RMT_MEDIAEXT
 from service.run import stop_scheduler, restart_scheduler
 from service.scheduler import Scheduler
 from utils.functions import get_used_of_partition, str_filesize, str_timelong, get_system, get_dir_files_by_ext
@@ -72,7 +68,7 @@ def create_flask_app(config):
         "id": 0,
         "name": admin_user,
         "password": admin_password[6:],
-        "pris": "我的媒体库,资源搜索,推荐,订阅管理,下载管理,媒体识别,服务,系统设置,搜索设置"
+        "pris": "我的媒体库,资源搜索,推荐,订阅管理,下载管理,媒体识别,服务,系统设置"
     }]
 
     App = Flask(__name__)
@@ -637,9 +633,9 @@ def create_flask_app(config):
                     SiteNames.append(name)
                     TotalUpload += int(up)
                     TotalDownload += int(dl)
-                    SiteUploads.append(round(int(up)/1024/1024/1024, 1))
-                    SiteDownloads.append(round(int(dl)/1024/1024/1024, 1))
-                    SiteRatios.append(ratio)
+                    SiteUploads.append(round(int(up)/1024/1024/1024))
+                    SiteDownloads.append(round(int(dl)/1024/1024/1024))
+                    SiteRatios.append(round(float(ratio), 1))
         # 历史
         StatisticsHis = get_site_statistics()
         TotalHisLabels = []
@@ -647,8 +643,8 @@ def create_flask_app(config):
         TotalDownloadHis = []
         for his in StatisticsHis:
             TotalHisLabels.append(his[0])
-            TotalUploadHis.append(round(int(his[1])/1024/1024/1024, 1))
-            TotalDownloadHis.append(round(int(his[2])/1024/1024/1024, 1))
+            TotalUploadHis.append(round(int(his[1])/1024/1024/1024))
+            TotalDownloadHis.append(round(int(his[2])/1024/1024/1024))
 
         return render_template("download/statistics.html",
                                CurrentDownload=str_filesize(CurrentDownload) + "B",
@@ -784,7 +780,7 @@ def create_flask_app(config):
                 '''
                 color = "pink"
                 scheduler_cfg_list.append(
-                    {'name': '豆瓣收藏', 'time': interval, 'state': sta_douban, 'id': 'douban', 'svg': svg, 'color': color})
+                    {'name': '豆瓣想看', 'time': interval, 'state': sta_douban, 'id': 'douban', 'svg': svg, 'color': color})
 
         # 实时日志
         svg = '''
@@ -1074,12 +1070,12 @@ def create_flask_app(config):
             # 启动定时服务
             if cmd == "sch":
                 commands = {
-                    "autoremovetorrents": AutoRemoveTorrents().run_schedule,
-                    "pttransfer": PTTransfer().run_schedule,
-                    "ptsignin": PTSignin().run_schedule,
+                    "autoremovetorrents": Downloader().pt_removetorrents,
+                    "pttransfer": Downloader().pt_transfer,
+                    "ptsignin": Sites().signin,
                     "sync": Sync().transfer_all_sync,
-                    "rssdownload": RSSDownloader().run_schedule,
-                    "douban": DoubanSync().run_schedule
+                    "rssdownload": Rss().rssdownload,
+                    "douban": DouBan().sync
                 }
                 sch_item = data.get("item")
                 if sch_item and commands.get(sch_item):
@@ -1219,6 +1215,7 @@ def create_flask_app(config):
                 year = data.get("year")
                 mtype = data.get("type")
                 season = data.get("season")
+                episode_format = data.get("episode_format")
                 if mtype == "TV":
                     media_type = MediaType.TV
                 elif mtype == "MOV":
@@ -1228,17 +1225,25 @@ def create_flask_app(config):
                 tmdb_info = Media().get_media_info_manual(media_type, title, year, tmdbid)
                 if not tmdb_info:
                     return {"retcode": 1, "retmsg": "转移失败，无法查询到TMDB信息"}
+                # 如果改次手动修复时一个单文件，自动修复改目录下同名文件，需要配合episode_format生效
+                need_fix_all = False
+                if ".%s" % path.split(".")[-1].lower() in RMT_MEDIAEXT and episode_format:
+                    path = os.path.dirname(path)
+                    need_fix_all = True
                 succ_flag, ret_msg = FileTransfer().transfer_media(in_from=SyncType.MAN,
                                                                    in_path=path,
                                                                    target_dir=dest_dir,
                                                                    tmdb_info=tmdb_info,
                                                                    media_type=media_type,
-                                                                   season=season)
+                                                                   season=season,
+                                                                   # 此处有个logid，不知道业务含义什么，先透传过去，做insert_transfer_blacklist
+                                                                   episode_format=(episode_format, need_fix_all, logid))
                 if succ_flag:
-                    if logid:
-                        insert_transfer_blacklist(path)
-                    else:
-                        update_transfer_unknown_state(path)
+                    if not need_fix_all:
+                        if logid:
+                            insert_transfer_blacklist(path)
+                        else:
+                            update_transfer_unknown_state(path)
                     return {"retcode": 0, "retmsg": "转移成功"}
                 else:
                     return {"retcode": 2, "retmsg": ret_msg}
@@ -1334,6 +1339,8 @@ def create_flask_app(config):
                                              exclude=exclude,
                                              size=size,
                                              note=note)
+                # 生效站点配置
+                Sites().init_config()
                 return {"code": ret}
 
             # 查询单个站点信息
@@ -1555,7 +1562,7 @@ def create_flask_app(config):
                 poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path')
                 if media_type == MediaType.MOVIE:
                     if doubanid:
-                        douban_info = Douban().movie_detail(doubanid)
+                        douban_info = DoubanApi().movie_detail(doubanid)
                         overview = douban_info.get("intro")
                         poster_path = "https://images.weserv.nl/?url=%s" % douban_info.get("cover_url")
 
@@ -1572,7 +1579,7 @@ def create_flask_app(config):
                     }
                 else:
                     if doubanid:
-                        douban_info = Douban().tv_detail(doubanid)
+                        douban_info = DoubanApi().tv_detail(doubanid)
                         overview = douban_info.get("intro")
                         poster_path = "https://images.weserv.nl/?url=%s" % douban_info.get("cover_url")
 
@@ -1725,12 +1732,12 @@ def create_flask_app(config):
         if not msg:
             return
         commands = {
-            "/ptr": {"func": AutoRemoveTorrents().run_schedule, "desp": "PT删种"},
-            "/ptt": {"func": PTTransfer().run_schedule, "desp": "PT下载转移"},
-            "/pts": {"func": PTSignin().run_schedule, "desp": "PT站签到"},
+            "/ptr": {"func": Downloader().pt_removetorrents, "desp": "PT删种"},
+            "/ptt": {"func": Downloader().pt_transfer, "desp": "PT下载转移"},
+            "/pts": {"func": Sites().signin, "desp": "PT站签到"},
             "/rst": {"func": Sync().transfer_all_sync, "desp": "监控目录全量同步"},
-            "/rss": {"func": RSSDownloader().run_schedule, "desp": "RSS订阅"},
-            "/db": {"func": DoubanSync().run_schedule, "desp": "豆瓣收藏同步"}
+            "/rss": {"func": Rss().rssdownload, "desp": "RSS订阅"},
+            "/db": {"func": DouBan().sync, "desp": "豆瓣同步"}
         }
         command = commands.get(msg)
         if command:
