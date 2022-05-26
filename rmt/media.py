@@ -514,6 +514,7 @@ class Media:
 
     @staticmethod
     def split_episode(file_name, episode_format):
+        log.info("file_name: %s, episode_format: %s" % (file_name, episode_format))
         ret = parse.parse(episode_format, file_name)
         if ret:
             episodes = ret.__getitem__('episode')
