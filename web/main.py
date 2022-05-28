@@ -1821,7 +1821,7 @@ def create_flask_app(config):
             xml_tree = ETree.fromstring(sMsg)
             try:
                 # 打开企业微信会产生心跳，filter
-                if xml_tree.find("MsgType") is None:
+                if xml_tree.find("MsgType") is None or xml_tree.find("EventKey") is None:
                     return
                 content = ""
                 msg_type = xml_tree.find("MsgType").text
