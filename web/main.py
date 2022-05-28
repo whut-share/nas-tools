@@ -1351,7 +1351,7 @@ def create_flask_app(config):
                     return {"retcode": 1, "retmsg": "转移失败，无法查询到TMDB信息"}
                 # 如果改次手动修复时一个单文件，自动修复改目录下同名文件，需要配合episode_format生效
                 need_fix_all = False
-                if ".%s" % os.path.splitext(path)[-1].lower() in RMT_MEDIAEXT and episode_format:
+                if "%s" % os.path.splitext(path)[-1].lower() in RMT_MEDIAEXT and episode_format:
                     path = os.path.dirname(path)
                     need_fix_all = True
                 succ_flag, ret_msg = FileTransfer().transfer_media(in_from=SyncType.MAN,
@@ -1812,6 +1812,9 @@ def create_flask_app(config):
             xml_tree = ETree.fromstring(sMsg)
             reponse_text = ""
             try:
+                # 打开企业微信会产生心跳，filter
+                if xml_tree.find("MsgType") is None:
+                    return
                 msg_type = xml_tree.find("MsgType").text
                 user_id = xml_tree.find("FromUserName").text
                 if msg_type == "event":
