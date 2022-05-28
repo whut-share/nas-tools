@@ -219,7 +219,13 @@
             <div class="col-lg-6" id="rename_episode_div">
               <div class="mb-3">
                 <label class="form-label">自定义集数位置(<a href="#" title="标定集数位置，例如：铁齿铜牙纪晓岚{episode}.iso">?</a>)</label>
-                <input type="text" id="rename_episode" class="form-control">
+                <input type="text" id="rename_episode" class="form-control" placeholder="{episode}.mp4">
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="mb-3">
+                <label class="form-label">最小文件大小</label>
+                <input type="text" id="rename_min_filesize" class="form-control" placeholder="过滤当前最小文件大小(MB)">
               </div>
             </div>
           </div>
@@ -309,32 +315,40 @@
       var year = $("#rename_year").val();
       var episode_format = $("#rename_episode").val();
       var season = $("#rename_season").val();
+      var min_filesize = $("#rename_min_filesize").val();
 
-      if(tmdb == ""){
-        if(title == ""){
-          $("#rename_title").addClass("is-invalid");
-          return;
-        }else{
-          $("#rename_title").removeClass("is-invalid");
-        }
+        if (tmdb == "") {
+            if (title == "") {
+                $("#rename_title").addClass("is-invalid");
+                return;
+            } else {
+                $("#rename_title").removeClass("is-invalid");
+            }
 
-        if(year == "" || isNaN(year)){
-          $("#rename_year").addClass("is-invalid");
-          return;
-        }else{
-          $("#rename_year").removeClass("is-invalid");
+            if (year == "" || isNaN(year)) {
+                $("#rename_year").addClass("is-invalid");
+                return;
+            } else {
+                $("#rename_year").removeClass("is-invalid");
+            }
+        } else {
+            if (isNaN(tmdb)) {
+                $("#rename_tmdb").addClass("is-invalid");
+                return;
+            } else {
+                $("#rename_tmdb").removeClass("is-invalid");
+            }
         }
-      }else{
-        if(isNaN(tmdb)){
-          $("#rename_tmdb").addClass("is-invalid");
-          return;
-        }else{
-          $("#rename_tmdb").removeClass("is-invalid");
+        if (min_filesize !== "" && isNaN(min_filesize)) {
+            $("#rename_min_filesize").addClass("is-invalid");
+            return;
+        } else {
+            $("#rename_min_filesize").removeClass("is-invalid");
         }
-      }
 
       // 开始处理
-      var data = { "logid": logid, "type": type, "title": title, "year": year, "tmdb": tmdb, "season": season, "episode_format": episode_format};
+      var data = { "logid": logid, "type": type, "title": title, "year": year, "tmdb": tmdb, "season": season
+          , "episode_format": episode_format, "min_filesize": min_filesize};
       $("#rename_btn").attr("disabled", true);
       $("#rename_btn").text("处理中...");
       $("#rename_retmsg").hide();
