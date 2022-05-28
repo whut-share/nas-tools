@@ -1345,6 +1345,7 @@ def create_flask_app(config):
                 mtype = data.get("type")
                 season = data.get("season")
                 episode_format = data.get("episode_format")
+                min_filesize = data.get("min_filesize")
                 if mtype == "TV":
                     media_type = MediaType.TV
                 elif mtype == "MOV":
@@ -1365,7 +1366,9 @@ def create_flask_app(config):
                                                                    tmdb_info=tmdb_info,
                                                                    media_type=media_type,
                                                                    season=season,
-                                                                   episode_format=(episode_format, need_fix_all, logid))
+                                                                   episode_format=(episode_format, need_fix_all, logid),
+                                                                   min_filesize=min_filesize
+                                                                   )
                 if succ_flag:
                     if not need_fix_all:
                         if logid:

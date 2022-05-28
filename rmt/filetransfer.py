@@ -328,7 +328,8 @@ class FileTransfer:
                        tmdb_info=None,
                        media_type=None,
                        season=None,
-                       episode_format=None):
+                       episode_format=None,
+                       min_filesize=None):
         """
         识别并转移一个文件、多个文件或者目录
         :param in_from: 来源，即调用该功能的渠道
@@ -340,6 +341,7 @@ class FileTransfer:
         :param media_type: 手动识别转移时传入的文件类型，如未输入，则自动识别
         :param season: 手动识别目录或文件时传入的的字号，如未输入，则自动识别
         :param episode_format: (手动识别录或文件传入的集数位置， 是否需要整体识别同类型文件)
+        :param min_filesize: 过滤小文件大小的上限值
         :return: 处理状态，错误信息
         """
         episode_format = (None, False, None) if not episode_format else episode_format
@@ -375,12 +377,13 @@ class FileTransfer:
                     file_list = [in_path]
                     log.info("【RMT】当前为蓝光原盘文件夹：%s" % str(in_path))
                 else:
-                    file_list = get_dir_files_by_ext(in_path, RMT_MEDIAEXT, self.__min_filesize)
+                    now_filesize = self.__min_filesize if not min_filesize or not min_filesize.isdigit() else int(min_filesize)
+                    file_list = get_dir_files_by_ext(in_path, RMT_MEDIAEXT, now_filesize)
                     Media_FileNum = len(file_list)
                     log.debug("【RMT】文件清单：" + str(file_list))
                     if Media_FileNum == 0:
-                        log.warn("【RMT】%s 目录下未找到媒体文件，当前最小文件大小限制为 %s" % (in_path, str_filesize(self.__min_filesize)))
-                        return False, "目录下未找到媒体文件，当前最小文件大小限制为 %s" % str_filesize(self.__min_filesize)
+                        log.warn("【RMT】%s 目录下未找到媒体文件，当前最小文件大小限制为 %s" % (in_path, str_filesize(now_filesize)))
+                        return False, "目录下未找到媒体文件，当前最小文件大小限制为 %s" % str_filesize(now_filesize)
             # 传入的是个文件
             else:
                 if not os.path.exists(in_path):
