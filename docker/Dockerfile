@@ -21,6 +21,7 @@ RUN apk add --no-cache \
        libxslt-dev \
        tzdata \
        su-exec \
+       nginx \
     && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && ln -sf /usr/bin/python3 /usr/bin/python \
@@ -36,6 +37,8 @@ RUN apk add --no-cache \
     && pip install --upgrade pip setuptools wheel \
     && pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt \
     && mkdir -p /var/log/supervisor \
+    && mkdir -p /etc/nginx/http.d \
+    && cp ${WORKDIR}/docker/nas_tools.conf /etc/nginx/http.d \
     && rm -rf \
        /tmp/* \
        /root/.cache \
