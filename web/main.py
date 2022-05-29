@@ -1336,6 +1336,9 @@ def create_flask_app(config):
                         paths = get_unknown_path_by_id(unknown_id)
                         if paths:
                             path = paths[0][0]
+                            udf_path = data.get("path")
+                            if udf_path.startswith("udf:"):
+                                path = udf_path[4:]
                             dest_dir = paths[0][1]
                         else:
                             return {"retcode": -1, "retmsg": "未查询到未识别记录"}
