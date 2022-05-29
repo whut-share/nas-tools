@@ -377,7 +377,7 @@ class FileTransfer:
                     file_list = [in_path]
                     log.info("【RMT】当前为蓝光原盘文件夹：%s" % str(in_path))
                 else:
-                    now_filesize = self.__min_filesize if not min_filesize or not min_filesize.isdigit() else int(min_filesize)
+                    now_filesize = self.__min_filesize if not min_filesize or not min_filesize.isdigit() else int(min_filesize) * 1024 * 1024
                     file_list = get_dir_files_by_ext(in_path, RMT_MEDIAEXT, now_filesize)
                     Media_FileNum = len(file_list)
                     log.debug("【RMT】文件清单：" + str(file_list))
