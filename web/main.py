@@ -37,7 +37,7 @@ from message.send import Message
 from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, LOG_QUEUE, RMT_MEDIAEXT
 from service.run import stop_scheduler, restart_scheduler
 from service.scheduler import Scheduler
-from utils.functions import get_used_of_partition, str_filesize, str_timelong, get_system, get_dir_files_by_ext
+from utils.functions import get_used_of_partition, str_filesize, str_timelong, get_system, get_dir_files
 from utils.meta_helper import MetaHelper
 from utils.sqls import get_search_result_by_id, get_search_results, \
     get_transfer_history, get_transfer_unknown_paths, \
@@ -1336,9 +1336,6 @@ def create_flask_app(config):
                         paths = get_unknown_path_by_id(unknown_id)
                         if paths:
                             path = paths[0][0]
-                            udf_path = data.get("path")
-                            if udf_path.startswith("udf:"):
-                                path = udf_path[4:]
                             dest_dir = paths[0][1]
                         else:
                             return {"retcode": -1, "retmsg": "未查询到未识别记录"}
@@ -1364,7 +1361,7 @@ def create_flask_app(config):
                     return {"retcode": 1, "retmsg": "转移失败，无法查询到TMDB信息"}
                 # 如果改次手动修复时一个单文件，自动修复改目录下同名文件，需要配合episode_format生效
                 need_fix_all = False
-                if "%s" % os.path.splitext(path)[-1].lower() in RMT_MEDIAEXT and episode_format:
+                if os.path.splitext(path)[-1].lower() in RMT_MEDIAEXT and episode_format:
                     path = os.path.dirname(path)
                     need_fix_all = True
                 succ_flag, ret_msg = FileTransfer().transfer_media(in_from=SyncType.MAN,
@@ -1409,14 +1406,16 @@ def create_flask_app(config):
                 tmdb_info = Media().get_media_info_manual(media_type, None, None, tmdbid)
                 if not tmdb_info:
                     return {"retcode": 1, "retmsg": "识别失败，无法查询到TMDB信息"}
-                succ_flag, ret_msg = FileTransfer().transfer_udf_media(in_path=inpath,
-                                                                        out_path=outpath,
-                                                                        tmdb_info=tmdb_info,
-                                                                        media_type=media_type,
-                                                                        season=season,
-                                                                        episode=(episode_format, episode_details),
-                                                                        min_filesize=min_filesize
-                                                                   )
+                # 自定义转移
+                succ_flag, ret_msg = FileTransfer().transfer_media(in_from=SyncType.MAN,
+                                                                   in_path=inpath,
+                                                                   target_dir=outpath,
+                                                                   tmdb_info=tmdb_info,
+                                                                   media_type=media_type,
+                                                                   season=season,
+                                                                   episode=(episode_format, episode_details, None),
+                                                                   min_filesize=min_filesize,
+                                                                   udf_flag=True)
                 if succ_flag:
                     return {"retcode": 0, "retmsg": "转移成功"}
                 else:
@@ -1447,7 +1446,7 @@ def create_flask_app(config):
                                 log.console(str(e))
                         else:
                             # 有集数的电视剧
-                            for dest_file in get_dir_files_by_ext(dest_path):
+                            for dest_file in get_dir_files(dest_path):
                                 file_meta_info = MetaInfo(os.path.basename(dest_file))
                                 if file_meta_info.get_episode_list() and set(
                                         file_meta_info.get_episode_list()).issubset(set(meta_info.get_episode_list())):
