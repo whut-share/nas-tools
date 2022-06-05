@@ -1474,12 +1474,14 @@ def create_flask_app(config):
                 info = ""
                 code = 0
                 try:
-                    response = requests.get("https://api.github.com/repos/jxxghp/nas-tools/releases/latest", timeout=10,
-                                            proxies=config.get_proxies())
-                    if response:
-                        ver_json = response.json()
-                        version = ver_json["tag_name"]
-                        info = f'<a href="{ver_json["html_url"]}" target="_blank">{version}</a>'
+                    version = APP_VERSION
+                    info = f'<a href="#" target="_blank">{version}</a>'
+                    # response = requests.get("https://api.github.com/repos/jxxghp/nas-tools/releases/latest", timeout=10,
+                    #                         proxies=config.get_proxies())
+                    # if response:
+                    #     ver_json = response.json()
+                    #     version = ver_json["tag_name"]
+                    #     info = f'<a href="{ver_json["html_url"]}" target="_blank">{version}</a>'
                 except Exception as e:
                     log.console(str(e))
                     code = -1
