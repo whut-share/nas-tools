@@ -130,7 +130,7 @@ class Subtitle:
                 continue
             if not item.get("name") or not item.get("file"):
                 continue
-            if item.get("bluray"):
+            if item.get("bluray") or item.get("file_ext") == ".m2ts":
                 file_path = "%s.mp4" % item.get("file")
             else:
                 file_path = "%s%s" % (item.get("file"), item.get("file_ext"))
