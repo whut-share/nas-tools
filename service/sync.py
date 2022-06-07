@@ -204,9 +204,10 @@ class Sync(object):
                     name = os.path.basename(event_path)
                     if not name:
                         return
-                    ext = os.path.splitext(name)[-1]
-                    if ext.lower() not in RMT_MEDIAEXT:
-                        return
+                    if name.lower() != "index.bdmv":
+                        ext = os.path.splitext(name)[-1]
+                        if ext.lower() not in RMT_MEDIAEXT:
+                            return
                     # 黑名单不处理
                     if is_transfer_in_blacklist(from_dir):
                         return
@@ -255,6 +256,7 @@ class Sync(object):
                     if not is_bluray_dir(path):
                         files = target_info.get('files')
                     else:
+                        path = os.path.dirname(path) if os.path.normpath(path).endswith("BDMV") else path
                         files = []
                     target_path = target_info.get('target')
                     unknown_path = target_info.get('unknown')

@@ -14,6 +14,7 @@ import requests
 from flask import Flask, request, json, render_template, make_response, session
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+import xml.dom.minidom
 
 import log
 from message.channel.wechat import WeChat
@@ -47,7 +48,7 @@ from utils.sqls import get_search_result_by_id, get_search_results, \
     update_config_site, get_config_search_rule, update_config_search_rule, get_config_rss_rule, update_config_rss_rule, \
     get_unknown_path_by_id, get_rss_tvs, get_rss_movies, delete_rss_movie, delete_rss_tv, \
     get_users, insert_user, delete_user, get_transfer_statistics, get_system_messages, get_site_statistics, \
-    get_download_history, get_site_statistics_recent_sites
+    get_download_history, get_site_statistics_recent_sites, is_media_downloaded
 from utils.types import MediaType, SearchType, DownloaderType, SyncType, OsType
 from utils.commons import EpisodeFormat
 from version import APP_VERSION
@@ -56,8 +57,6 @@ from web.backend.subscribe import add_rss_subscribe, add_rss_substribe_from_stri
 from web.backend.webhook_event import WebhookEvent
 from web.backend.search_torrents import search_medias_for_web
 from utils.WXBizMsgCrypt3 import WXBizMsgCrypt
-import xml.etree.cElementTree as ETree
-
 from message.channel.telegram import Telegram
 
 login_manager = LoginManager()
@@ -561,9 +560,9 @@ def create_flask_app(config):
         elif RecommendType == "dbnm":
             # 豆瓣最新电影
             res_list = DoubanHot().get_douban_new_movie()
-        elif RecommendType == "dbnt":
+        elif RecommendType == "dbzy":
             # 豆瓣最新电视剧
-            res_list = DoubanHot().get_douban_new_tv()
+            res_list = DoubanHot().get_douban_hot_show()
         else:
             res_list = []
 
@@ -574,26 +573,36 @@ def create_flask_app(config):
             rid = res.get('id')
             if RecommendType in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm']:
                 title = res.get('title')
-                if title in MovieKeys:
-                    fav = 1
-                else:
-                    fav = 0
                 date = res.get('release_date')
                 if date:
                     year = date[0:4]
                 else:
                     year = ''
+                if title in MovieKeys:
+                    # 已订阅
+                    fav = 1
+                elif is_media_downloaded(title, year):
+                    # 已下载
+                    fav = 2
+                else:
+                    # 未订阅、未下载
+                    fav = 0
             else:
                 title = res.get('name')
-                if title in TvKeys:
-                    fav = 1
-                else:
-                    fav = 0
                 date = res.get('first_air_date')
                 if date:
                     year = date[0:4]
                 else:
                     year = ''
+                if title in TvKeys:
+                    # 已订阅
+                    fav = 1
+                elif is_media_downloaded(title, year):
+                    # 已下载
+                    fav = 2
+                else:
+                    # 未订阅、未下载
+                    fav = 0
             image = res.get('poster_path')
             if RecommendType in ['hm', 'nm', 'ht', 'nt']:
                 image = "https://image.tmdb.org/t/p/original/%s" % image
@@ -1409,7 +1418,7 @@ def create_flask_app(config):
                 season = data.get("season")
                 episode_format = data.get("episode_format")
                 episode_details = data.get("episode_details")
-                episode_offset= data.get("episode_offset")
+                episode_offset = data.get("episode_offset")
                 min_filesize = data.get("min_filesize")
                 if mtype == "TV":
                     media_type = MediaType.TV
@@ -1891,36 +1900,78 @@ def create_flask_app(config):
             # 验证URL成功，将sEchoStr返回给企业号
             return sEchoStr
         else:
-            sReqData = request.data
-            log.debug("收到微信消息：%s" % str(sReqData))
-            ret, sMsg = wxcpt.DecryptMsg(sReqData, sVerifyMsgSig, sVerifyTimeStamp, sVerifyNonce)
-            log.info(sMsg)
-            if ret != 0:
-                log.error("解密微信消息失败 DecryptMsg ret = %s" % str(ret))
-                return make_response("ok", 200)
-            xml_tree = ETree.fromstring(sMsg)
             try:
-                # 打开企业微信会产生心跳，filter
-                if not xml_tree.find("MsgType"):
+                sReqData = request.data
+                log.debug("收到微信消息：%s" % str(sReqData))
+                ret, sMsg = wxcpt.DecryptMsg(sReqData, sVerifyMsgSig, sVerifyTimeStamp, sVerifyNonce)
+                if ret != 0:
+                    log.error("解密微信消息失败 DecryptMsg ret = %s" % str(ret))
                     return make_response("ok", 200)
+                # 解析XML报文
+                """
+                1、消息格式：
+                <xml>
+                   <ToUserName><![CDATA[toUser]]></ToUserName>
+                   <FromUserName><![CDATA[fromUser]]></FromUserName> 
+                   <CreateTime>1348831860</CreateTime>
+                   <MsgType><![CDATA[text]]></MsgType>
+                   <Content><![CDATA[this is a test]]></Content>
+                   <MsgId>1234567890123456</MsgId>
+                   <AgentID>1</AgentID>
+                </xml>
+                2、事件格式：
+                <xml>
+                    <ToUserName><![CDATA[toUser]]></ToUserName>
+                    <FromUserName><![CDATA[UserID]]></FromUserName>
+                    <CreateTime>1348831860</CreateTime>
+                    <MsgType><![CDATA[event]]></MsgType>
+                    <Event><![CDATA[subscribe]]></Event>
+                    <AgentID>1</AgentID>
+                </xml>            
+                """
+                dom_tree = xml.dom.minidom.parseString(sMsg.decode('UTF-8'))
+                root_node = dom_tree.documentElement
+                # 消息类型
+                msg_type_node = root_node.getElementsByTagName("MsgType")
+                if msg_type_node and msg_type_node[0].firstChild:
+                    msg_type = msg_type_node[0].firstChild.data
+                else:
+                    msg_type = None
+                # 用户ID
+                user_id_node = root_node.getElementsByTagName("FromUserName")
+                if user_id_node and user_id_node[0].firstChild:
+                    user_id = user_id_node[0].firstChild.data
+                else:
+                    user_id = None
+                # 没的消息类型和用户ID的消息不要
+                if not msg_type or not user_id:
+                    log.info("收到微信心跳报文...")
+                    return make_response("ok", 200)
+                # 解析消息内容
                 content = ""
-                msg_type = xml_tree.find("MsgType").text
-                user_id = xml_tree.find("FromUserName").text
-                if msg_type == "event" and xml_tree.find("EventKey"):
-                    event_key = xml_tree.find("EventKey").text
+                if msg_type == "event":
+                    # 事件消息
+                    event_key_node = root_node.getElementsByTagName("EventKey")
+                    if event_key_node and event_key_node[0].firstChild:
+                        event_key = event_key_node[0].firstChild.data
+                    else:
+                        event_key = None
                     if event_key:
                         log.info("点击菜单：%s" % event_key)
                         keys = event_key.split('#')
                         if len(keys) > 2:
                             content = WECHAT_MENU.get(keys[2])
-                else:
-                    if not xml_tree.find("Content"):
-                        log.info("收到微信心跳报文...")
-                        return make_response("ok", 200)
-                    content = xml_tree.find("Content").text
-                    log.info("消息内容：%s" % content)
-                # 处理消息内容
-                handle_message_job(content, SearchType.WX, user_id)
+                elif msg_type == "text":
+                    # 文本消息
+                    content_node = root_node.getElementsByTagName("Content")
+                    if content_node and content_node[0].firstChild:
+                        content = content_node[0].firstChild.data
+                        log.info("消息内容：%s" % content)
+                    else:
+                        content = ""
+                if content:
+                    # 处理消息内容
+                    handle_message_job(content, SearchType.WX, user_id)
                 return make_response(content, 200)
             except Exception as err:
                 log.error("微信消息处理发生错误：%s - %s" % (str(err), traceback.format_exc()))
