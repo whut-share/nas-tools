@@ -232,11 +232,13 @@ def create_flask_app(config):
             if not username:
                 return render_template('login.html',
                                        GoPage=GoPage,
+                                       BingWallpaper=get_bing_wallpaper(),
                                        err_msg="请输入用户名")
             user_info = get_user(username)
             if not user_info:
                 return render_template('login.html',
                                        GoPage=GoPage,
+                                       BingWallpaper=get_bing_wallpaper(),
                                        err_msg="用户名或密码错误")
             # 创建用户实体
             user = User(user_info)
@@ -255,6 +257,7 @@ def create_flask_app(config):
             else:
                 return render_template('login.html',
                                        GoPage=GoPage,
+                                       BingWallpaper=get_bing_wallpaper(),
                                        err_msg="用户名或密码错误")
 
     # 开始
@@ -1891,14 +1894,15 @@ def create_flask_app(config):
             sReqData = request.data
             log.debug("收到微信消息：%s" % str(sReqData))
             ret, sMsg = wxcpt.DecryptMsg(sReqData, sVerifyMsgSig, sVerifyTimeStamp, sVerifyNonce)
+            log.info(sMsg)
             if ret != 0:
                 log.error("解密微信消息失败 DecryptMsg ret = %s" % str(ret))
                 return make_response("ok", 200)
             xml_tree = ETree.fromstring(sMsg)
             try:
                 # 打开企业微信会产生心跳，filter
-                if xml_tree.find("MsgType") is None:
-                    return
+                if not xml_tree.find("MsgType"):
+                    return make_response("ok", 200)
                 content = ""
                 msg_type = xml_tree.find("MsgType").text
                 user_id = xml_tree.find("FromUserName").text
@@ -1911,8 +1915,8 @@ def create_flask_app(config):
                             content = WECHAT_MENU.get(keys[2])
                 else:
                     if not xml_tree.find("Content"):
-                        log.info("heartbeat。。。。。。。")
-                        return
+                        log.info("收到微信心跳报文...")
+                        return make_response("ok", 200)
                     content = xml_tree.find("Content").text
                     log.info("消息内容：%s" % content)
                 # 处理消息内容
