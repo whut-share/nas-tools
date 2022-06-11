@@ -59,6 +59,8 @@ class EpisodeFormat(object):
         return s + self.__offset if s else None, e + self.__offset if e else None
 
     def __handle_single(self, file: str):
+        if not self.__format:
+            return None, None
         ret = parse.parse(self.__format, file)
         if not ret or not ret.__contains__(self.__key):
             return None, None
