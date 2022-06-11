@@ -51,7 +51,7 @@ class EpisodeFormat(object):
 
     def split_episode(self, file_name):
         # 指定的具体集数，直接返回
-        if self.__start_ep and self.__start_ep == self.__end_ep:
+        if self.__start_ep is not None and self.__start_ep == self.__end_ep:
             return self.__start_ep + self.__offset, None
         if not self.__format:
             return None, None
