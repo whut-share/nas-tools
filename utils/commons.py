@@ -38,8 +38,8 @@ class EpisodeFormat(object):
         return self.__offset
 
     def match(self, file: str):
-        if self.__format is None:
-            return False
+        if not self.__format:
+            return True
         s, e = self.__handle_single(file)
         if not s:
             return False

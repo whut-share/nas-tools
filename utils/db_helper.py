@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import threading
 
 import log
@@ -14,6 +13,7 @@ lock = threading.Lock()
 class DBHelper:
     __connection = None
     __db_path = None
+    __pools = None
 
     def __init__(self):
         self.init_config()
@@ -35,7 +35,7 @@ class DBHelper:
         cursor = conn.cursor()
         try:
             # Jackett搜索结果表
-            cursor.execute('''CREATE TABLE IF NOT EXISTS SEARCH_RESULTS
+            cursor.execute('''CREATE TABLE IF NOT EXISTS SEARCH_TORRENTS_RESULT
                                    (ID INTEGER PRIMARY KEY AUTOINCREMENT     NOT NULL,
                                    TORRENT_NAME    TEXT,
                                    ENCLOSURE    TEXT,
@@ -57,7 +57,10 @@ class DBHelper:
                                    SEEDERS    INTEGER,
                                    PEERS    INTEGER,                   
                                    SITE    TEXT,
-                                   SITE_ORDER    TEXT);''')
+                                   SITE_ORDER    TEXT,
+                                   FREELEECH    TEXT,
+                                   PAGEURL    TEXT,
+                                   OTHERINFO    TEXT);''')
             # RSS下载记录表
             cursor.execute('''CREATE TABLE IF NOT EXISTS RSS_TORRENTS
                                    (ID INTEGER PRIMARY KEY AUTOINCREMENT     NOT NULL,
@@ -249,7 +252,7 @@ class DBHelper:
             cursor.executemany(sql, data_list)
             conn.commit()
         except Exception as e:
-            log.error(f"【DB】执行SQL出错：sql:{sql}; parameters:{data_list}; {e}")
+            log.error(f"【DB】执行SQL出错：sql:{sql}; {e}")
             return False
         finally:
             self.__pools.free(conn)

@@ -35,12 +35,13 @@ from rmt.metainfo import MetaInfo
 from pt.mediaserver.jellyfin import Jellyfin
 from pt.mediaserver.plex import Plex
 from message.send import Message
-from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, LOG_QUEUE, RMT_MEDIAEXT
+from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, LOG_QUEUE, RMT_MEDIAEXT, TORRENT_SEARCH_PARAMS
 from service.run import stop_scheduler, restart_scheduler
 from service.scheduler import Scheduler
 from utils.functions import get_used_of_partition, str_filesize, str_timelong, get_system, get_dir_files, \
     get_bing_wallpaper
 from utils.meta_helper import MetaHelper
+from utils.security import Security
 from utils.sqls import get_search_result_by_id, get_search_results, \
     get_transfer_history, get_transfer_unknown_paths, \
     update_transfer_unknown_state, delete_transfer_unknown, get_transfer_path_by_id, insert_transfer_blacklist, \
@@ -48,7 +49,8 @@ from utils.sqls import get_search_result_by_id, get_search_results, \
     update_config_site, get_config_search_rule, update_config_search_rule, get_config_rss_rule, update_config_rss_rule, \
     get_unknown_path_by_id, get_rss_tvs, get_rss_movies, delete_rss_movie, delete_rss_tv, \
     get_users, insert_user, delete_user, get_transfer_statistics, get_system_messages, get_site_statistics, \
-    get_download_history, get_site_statistics_recent_sites, is_media_downloaded
+    get_download_history, get_site_statistics_recent_sites, is_media_downloaded, \
+    get_rss_tv_id, get_rss_movie_id
 from utils.types import MediaType, SearchType, DownloaderType, SyncType, OsType
 from utils.commons import EpisodeFormat
 from version import APP_VERSION
@@ -426,6 +428,8 @@ def create_flask_app(config):
         MediaRestypeDict = {}
         # 分辨率字典
         MediaPixDict = {}
+        # 免费数量
+        FreeCount = 0
         # 查询统计值
         for item in res:
             # 资源类型
@@ -455,6 +459,9 @@ def create_flask_app(config):
                     MediaSiteDict[item[6]] = 1
                 else:
                     MediaSiteDict[item[6]] += 1
+            # 免费
+            if item[17] == "1":
+                FreeCount += 1
         # 展示类型
         MediaMTypes = []
         for k, v in MeidaTypeDict.items():
@@ -475,7 +482,11 @@ def create_flask_app(config):
         for k, v in MediaRestypeDict.items():
             MediaRestypes.append({"name": k, "num": v})
         MediaRestypes = sorted(MediaRestypes, key=lambda x: int(x.get("num")), reverse=True)
-
+        # 站点列表
+        SiteDict = []
+        Indexers = Searcher().indexer.get_indexers()
+        for item in Indexers:
+            SiteDict.append(item[1])
         return render_template("search.html",
                                UserPris=str(pris).split(","),
                                SearchWord=SearchWord or "",
@@ -485,23 +496,65 @@ def create_flask_app(config):
                                MediaMTypes=MediaMTypes,
                                MediaSites=MediaSites,
                                MediaPixs=MediaPixs,
-                               MediaRestypes=MediaRestypes)
+                               MediaRestypes=MediaRestypes,
+                               FreeCount=FreeCount,
+                               RestypeDict=TORRENT_SEARCH_PARAMS.get("restype").keys(),
+                               PixDict=TORRENT_SEARCH_PARAMS.get("pix").keys(),
+                               SiteDict=SiteDict)
 
     # 电影订阅页面
     @App.route('/movie_rss', methods=['POST', 'GET'])
     @login_required
     def movie_rss():
         Items = get_rss_movies()
-        Count = len(Items)
-        return render_template("rss/movie_rss.html", Count=Count, Items=Items)
+        return render_template("rss/movie_rss.html", Count=len(Items), Items=Items)
 
     # 电视剧订阅页面
     @App.route('/tv_rss', methods=['POST', 'GET'])
     @login_required
     def tv_rss():
         Items = get_rss_tvs()
-        Count = len(Items)
-        return render_template("rss/tv_rss.html", Count=Count, Items=Items)
+        return render_template("rss/tv_rss.html", Count=len(Items), Items=Items)
+
+    # 订阅日历页面
+    @App.route('/rss_calendar', methods=['POST', 'GET'])
+    @login_required
+    def rss_calendar():
+        Today = datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d')
+        Events = []
+        TmdbMovies = Media().get_tmdb_upcoming_movies(1)
+        for movie in TmdbMovies:
+            if movie.get("release_date"):
+                year = movie.get("release_date")[0:4]
+                Events.append(
+                    {"type": "电影",
+                     "title": movie.get("title"),
+                     "start": movie.get("release_date"),
+                     "id": movie.get("id"),
+                     "year": year,
+                     "poster": "https://image.tmdb.org/t/p/w500%s" % movie.get('poster_path'),
+                     "vote_average": movie.get("vote_average"),
+                     "info": "",
+                     "rssid": get_rss_movie_id(movie.get("title"), year)})
+        DoubanMovies = DoubanApi().movie_soon(count=50)
+        if DoubanMovies:
+            for movie in DoubanMovies.get("subject_collection_items"):
+                if movie.get("release_date"):
+                    release_date = "%s-%s" % (datetime.datetime.now().year, movie.get("release_date").replace(".", "-"))
+                    Events.append(
+                        {"type": "电影",
+                         "title": movie.get("title"),
+                         "start": release_date,
+                         "id": "DB:" + movie.get("id"),
+                         "year": release_date[0:4],
+                         "poster": movie.get("cover").get("url"),
+                         "vote_average": movie.get("rating").get("value") if movie.get("rating") else "无",
+                         "info": movie.get("info"),
+                         "rssid": get_rss_movie_id(movie.get("title"), release_date[0:4])})
+
+        return render_template("rss/rss_calendar.html",
+                               Today=Today,
+                               Events=Events)
 
     # 站点维护页面
     @App.route('/site', methods=['POST', 'GET'])
@@ -594,10 +647,10 @@ def create_flask_app(config):
                     year = date[0:4]
                 else:
                     year = ''
-                if title in TvKeys:
+                if MetaInfo(title=title).get_name() in TvKeys:
                     # 已订阅
                     fav = 1
-                elif is_media_downloaded(title, year):
+                elif is_media_downloaded(MetaInfo(title=title).get_name(), year):
                     # 已下载
                     fav = 2
                 else:
@@ -1236,8 +1289,10 @@ def create_flask_app(config):
             if cmd == "search":
                 # 开始检索
                 search_word = data.get("search_word")
+                ident_flag = False if data.get("unident") else True
+                filters = data.get("filters")
                 if search_word:
-                    search_medias_for_web(search_word)
+                    search_medias_for_web(content=search_word, ident_flag=ident_flag, filters=filters)
                 return {"retcode": 0}
 
             # 添加下载
@@ -1392,7 +1447,9 @@ def create_flask_app(config):
                                                                    tmdb_info=tmdb_info,
                                                                    media_type=media_type,
                                                                    season=season,
-                                                                   episode=(EpisodeFormat(episode_format), need_fix_all, logid),
+                                                                   episode=(
+                                                                       EpisodeFormat(episode_format), need_fix_all,
+                                                                       logid),
                                                                    min_filesize=min_filesize
                                                                    )
                 if succ_flag:
@@ -1436,7 +1493,9 @@ def create_flask_app(config):
                                                                    tmdb_info=tmdb_info,
                                                                    media_type=media_type,
                                                                    season=season,
-                                                                   episode=(EpisodeFormat(episode_format, episode_details, episode_offset), False, None),
+                                                                   episode=(
+                                                                       EpisodeFormat(episode_format, episode_details,
+                                                                                     episode_offset), False, None),
                                                                    min_filesize=min_filesize,
                                                                    udf_flag=True)
                 if succ_flag:
@@ -1689,27 +1748,43 @@ def create_flask_app(config):
                 mtype = data.get("type")
                 year = data.get("year")
                 season = data.get("season")
-                if name and mtype:
+                rssid = data.get("rssid")
+                page = data.get("page")
+                if name:
+                    meta_info = MetaInfo(title=name)
+                    name = meta_info.get_name()
+                    if not season:
+                        season = meta_info.get_season_string()
+                if mtype:
                     if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'MOV']:
-                        delete_rss_movie(name, year)
+                        delete_rss_movie(title=name, year=year, rssid=rssid)
                     else:
-                        delete_rss_tv(name, year, season)
-                return {"code": 0}
+                        delete_rss_tv(title=name, year=year, season=season, rssid=rssid)
+                return {"code": 0, "page": page, "name": name}
 
             # 添加RSS订阅
             if cmd == "add_rss_media":
+                doubanid = data.get("doubanid")
+                tmdbid = data.get("tmdbid")
                 name = data.get("name")
                 mtype = data.get("type")
                 year = data.get("year")
                 season = data.get("season")
                 match = data.get("match")
+                page = data.get("page")
                 if name and mtype:
                     if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'MOV']:
                         mtype = MediaType.MOVIE
                     else:
                         mtype = MediaType.TV
-                code, msg, media_info = add_rss_subscribe(mtype, name, year, season, match)
-                return {"code": code, "msg": msg}
+                code, msg, media_info = add_rss_subscribe(mtype=mtype,
+                                                          name=name,
+                                                          year=year,
+                                                          season=season,
+                                                          match=match,
+                                                          doubanid=doubanid,
+                                                          tmdbid=tmdbid)
+                return {"code": code, "msg": msg, "page": page, "name": name}
 
             # 未识别的重新识别
             if cmd == "re_identification":
@@ -1741,7 +1816,9 @@ def create_flask_app(config):
                 mtype = data.get("type")
                 title = data.get("title")
                 year = data.get("year")
+                page = data.get("page")
                 doubanid = data.get("doubanid")
+                rssid = data.get("rssid")
                 if mtype in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm', 'MOV']:
                     media_type = MediaType.MOVIE
                 else:
@@ -1772,13 +1849,18 @@ def create_flask_app(config):
                         year = tmdb_info.get('release_date')[0:4] if tmdb_info.get('release_date') else ""
                     return {
                         "code": 0,
+                        "type": mtype,
+                        "page": page,
                         "title": title,
                         "vote_average": vote_average,
                         "poster_path": poster_path,
                         "release_date": release_date,
                         "year": year,
                         "overview": overview,
-                        "link_url": link_url
+                        "link_url": link_url,
+                        "tmdbid": tmdbid,
+                        "doubanid": doubanid,
+                        "rssid": rssid or get_rss_movie_id(title=title, year=year)
                     }
                 else:
                     if doubanid:
@@ -1805,13 +1887,18 @@ def create_flask_app(config):
                         year = tmdb_info.get('first_air_date')[0:4] if tmdb_info.get('first_air_date') else ""
                     return {
                         "code": 0,
+                        "type": mtype,
+                        "page": page,
                         "title": title,
                         "vote_average": vote_average,
                         "poster_path": poster_path,
                         "release_date": release_date,
                         "year": year,
                         "overview": overview,
-                        "link_url": link_url
+                        "link_url": link_url,
+                        "tmdbid": tmdbid,
+                        "doubanid": doubanid,
+                        "rssid": rssid or get_rss_tv_id(title=title, year=year)
                     }
 
             # 测试连通性
@@ -1859,11 +1946,12 @@ def create_flask_app(config):
             if cmd == "refresh_rss":
                 mtype = data.get("type")
                 rssid = data.get("rssid")
+                page = data.get("page")
                 if mtype == "MOV":
                     _thread.start_new_thread(Rss().rsssearch_movie, (rssid,))
                 else:
                     _thread.start_new_thread(Rss().rsssearch_tv, (rssid,))
-                return {"code": 0}
+                return {"code": 0, "page": page}
 
             # 刷新首页消息中心
             if cmd == "refresh_message":
@@ -1981,11 +2069,11 @@ def create_flask_app(config):
     @App.route('/jellyfin', methods=['POST'])
     @App.route('/emby', methods=['POST'])
     def webhook():
-        if not MediaServer().webhook_allow_access(request.remote_addr):
-            log.warn(f"非法IP地址的媒体消息通知 {request.remote_addr}")
-            return 'Success'
+        if not Security().check_mediaserver_ip(request.remote_addr):
+            log.warn(f"非法IP地址的媒体服务器消息通知：{request.remote_addr}")
+            return 'Reject'
         request_json = json.loads(request.form.get('data', {}))
-        # print(str(request_json))
+        log.debug("收到Webhook报文：%s" % str(request_json))
         event = WebhookEvent(request_json)
         event.report_to_discord()
         return 'Success'
@@ -1994,13 +2082,17 @@ def create_flask_app(config):
     @App.route('/telegram', methods=['POST', 'GET'])
     def telegram():
         msg_json = request.get_json()
+        if not Security().check_telegram_ip(request.remote_addr):
+            log.error("收到来自 %s 的非法Telegram消息：%s" % (request.remote_addr, msg_json))
+            return 'Reject'
         if msg_json:
             message = msg_json.get("message", {})
             text = message.get("text")
             user_id = message.get("from", {}).get("id")
+            log.info("收到Telegram消息：from=%s, text=%s" % (user_id, text))
             if text:
                 handle_message_job(text, SearchType.TG, user_id)
-        return 'ok'
+        return 'Success'
 
     # 自定义模板过滤器
     @App.template_filter('b64encode')

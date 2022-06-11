@@ -1,16 +1,15 @@
 import os
 import re
 import traceback
-import parse
-
 import log
-from config import Config, SPLIT_CHARS
+from config import Config
 from rmt.metainfo import MetaInfo
 from rmt.tmdbv3api import TMDb, Search, Movie, TV
 from utils.functions import xstr
 from utils.meta_helper import MetaHelper
 from utils.types import MediaType, MatchMode
 from utils.commons import EpisodeFormat
+
 
 class Media:
     # TheMovieDB
@@ -71,7 +70,7 @@ class Media:
                 return True
         return False
 
-    def __search_tmdb_names(self, mtype, tmdb_id):
+    def __search_tmdb_names(self, mtype: MediaType, tmdb_id):
         """
         检索tmdb中所有的译名，用于名称匹配
         :param mtype: 类型：电影、电视剧、动漫
@@ -171,8 +170,6 @@ class Media:
         if len(movies) == 0:
             log.warn(f"【META】{file_media_name} 未找到媒体信息!")
             return None
-        elif len(movies) == 1:
-            return movies[0]
         else:
             info = {}
             if first_media_year:
@@ -224,8 +221,6 @@ class Media:
         if len(tvs) == 0:
             log.warn(f"【META】{file_media_name} 未找到媒体信息!")
             return None
-        elif len(tvs) == 1:
-            return tvs[0]
         else:
             info = {}
             if first_media_year:
@@ -307,7 +302,7 @@ class Media:
                     return tv
         return {}
 
-    def get_media_info_manual(self, mtype, title, year, tmdbid=None):
+    def get_media_info_manual(self, mtype: MediaType, title, year, tmdbid=None):
         """
         给定名称和年份或者TMDB号，查询媒体信息
         :param mtype: 类型：电影、电视剧、动漫
@@ -397,7 +392,8 @@ class Media:
         meta_info.set_tmdb_info(self.meta.get_meta_data_by_key(media_key))
         return meta_info
 
-    def get_media_info_on_files(self, file_list, tmdb_info=None, media_type=None, season=None, episode_format: EpisodeFormat = None):
+    def get_media_info_on_files(self, file_list, tmdb_info=None, media_type=None, season=None,
+                                episode_format: EpisodeFormat = None):
         """
         根据文件清单，搜刮TMDB信息，用于文件名称的识别
         :param file_list: 文件清单，如果是列表也可以是单个文件，也可以是一个目录
@@ -536,6 +532,16 @@ class Media:
         if not self.tv:
             return []
         return self.tv.on_the_air(page)
+
+    def get_tmdb_upcoming_movies(self, page):
+        """
+        获取即将上映电影
+        :param page: 第几页
+        :return: TMDB信息列表
+        """
+        if not self.movie:
+            return []
+        return self.movie.upcoming(page)
 
     def get_tmdb_movie_info(self, tmdbid):
         """

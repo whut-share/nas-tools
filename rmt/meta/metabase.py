@@ -5,6 +5,7 @@ from requests import RequestException
 import log
 from config import FANART_TV_API_URL, FANART_MOVIE_API_URL, ANIME_GENREIDS, Config
 from rmt.category import Category
+from utils.functions import is_all_chinese
 from utils.types import MediaType
 
 
@@ -71,6 +72,8 @@ class MetaBase(object):
     seeders = 0
     peers = 0
     description = None
+    freeleech = False
+    page_url = None
 
     def __init__(self, title, subtitle=None):
         if not title:
@@ -82,14 +85,21 @@ class MetaBase(object):
         self.subtitle = subtitle
 
     def get_name(self):
-        if self.cn_name:
+        if self.cn_name and is_all_chinese(self.cn_name):
             return self.cn_name
-        if self.en_name:
+        elif self.en_name:
             return self.en_name
+        elif self.cn_name:
+            return self.cn_name
         return ""
 
     def get_title_string(self):
-        return "%s (%s)" % (self.title, self.year) if self.year else self.title
+        if self.title:
+            return "%s (%s)" % (self.title, self.year) if self.year else self.title
+        elif self.get_name():
+            return "%s (%s)" % (self.get_name(), self.year) if self.year else self.get_name()
+        else:
+            return ""
 
     def get_vote_string(self):
         if self.vote_average:
@@ -102,6 +112,17 @@ class MetaBase(object):
             return self.get_title_string()
         else:
             return "%s %s" % (self.get_title_string(), self.get_vote_string())
+
+    def get_title_ep_vote_string(self):
+        string = self.get_title_string()
+        if self.get_episode_list():
+            string = "%s %s" % (string, self.get_season_episode_string())
+        else:
+            if self.get_season_list():
+                string = "%s %s" % (string, self.get_season_string())
+            if self.vote_average:
+                string = "%s %s" % (string, self.get_vote_string())
+        return string
 
     # 返回季字符串
     def get_season_string(self):
@@ -191,13 +212,13 @@ class MetaBase(object):
             return ""
 
     # 返回背景图片地址
-    def get_backdrop_path(self):
+    def get_backdrop_path(self, default=True):
         if self.fanart_image:
             return self.fanart_image
         elif self.backdrop_path:
             return self.backdrop_path
         else:
-            return "../static/img/tmdb.webp"
+            return "../static/img/tmdb.webp" if default else ""
 
     # 返回消息图片地址
     def get_message_image(self):
@@ -286,7 +307,9 @@ class MetaBase(object):
                          size=0,
                          seeders=0,
                          peers=0,
-                         description=None):
+                         description=None,
+                         freeleech=False,
+                         page_url=None):
         self.site = site
         self.site_order = site_order
         self.enclosure = enclosure
@@ -295,6 +318,8 @@ class MetaBase(object):
         self.seeders = seeders
         self.peers = peers
         self.description = description
+        self.freeleech = freeleech
+        self.page_url = page_url
 
     # 获取消息媒体图片
     # 增加cache，优化资源检索时性能

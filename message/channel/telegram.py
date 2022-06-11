@@ -4,6 +4,7 @@ import requests
 
 import log
 from config import Config
+from message.channel.channel import IMessageChannel
 from utils.functions import singleton
 
 lock = Lock()
@@ -11,7 +12,7 @@ WEBHOOK_STATUS = False
 
 
 @singleton
-class Telegram:
+class Telegram(IMessageChannel):
     __telegram_token = None
     __telegram_chat_id = None
     __webhook_url = None
@@ -93,11 +94,11 @@ class Telegram:
             res = requests.get(sc_url + urlencode(values), timeout=10, proxies=self.__config.get_proxies())
             if res:
                 ret_json = res.json()
-                errno = ret_json['ok']
-                if errno == 0:
-                    return True, errno
+                status = ret_json.get("ok")
+                if status:
+                    return True, ""
                 else:
-                    return False, errno
+                    return False, ret_json.get("description")
             else:
                 return False, "未获取到返回信息"
         except Exception as msg_e:
@@ -145,9 +146,14 @@ class Telegram:
         res = requests.get(sc_url, timeout=10, proxies=self.__config.get_proxies())
         if res and res.json():
             if res.json().get("ok"):
-                webhook_url = res.json().get("result", {}).get("url") or ""
+                result = res.json().get("result") or {}
+                webhook_url = result.get("url") or ""
                 if webhook_url:
                     log.info("TelegramBot Webhook 地址为：%s" % webhook_url)
+                pending_update_count = result.get("pending_update_count")
+                last_error_message = result.get("last_error_message")
+                if pending_update_count and last_error_message:
+                    log.warn("TelegramBot Webhook 有 %s 条消息挂起，最后一次失败原因为：%s" % (pending_update_count, last_error_message))
                 if webhook_url == self.__webhook_url:
                     return 1
                 else:
