@@ -1657,6 +1657,7 @@ def create_flask_app(config):
                 # 安装依赖
                 call(['pip', 'install', '-r', '/nas-tools/requirements.txt', ])
                 # 升级
+                call(['git', 'checkout', '.'])
                 call(['git', 'pull'])
                 # 退出主进程
                 shutdown_server()
