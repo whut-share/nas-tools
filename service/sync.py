@@ -5,15 +5,16 @@ import traceback
 
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
-from watchdog.observers.read_directory_changes import WindowsApiObserver
 from config import RMT_MEDIAEXT, RMT_SUBEXT, Config
 from rmt.metainfo import MetaInfo
 import log
 from rmt.filetransfer import FileTransfer
 from utils.functions import singleton, is_invalid_path, is_path_in_path, is_bluray_dir, get_dir_level1_medias, \
-    get_dir_files
-from utils.sqls import is_transfer_in_blacklist, insert_sync_history, is_sync_in_history
+    get_dir_files, get_system
 from utils.types import SyncType, OsType
+if get_system() == OsType.WINDOWS:
+    from watchdog.observers.read_directory_changes import WindowsApiObserver
+from utils.sqls import is_transfer_in_blacklist, insert_sync_history, is_sync_in_history
 from watchdog.events import FileSystemEventHandler,FileCreatedEvent
 from itertools import groupby
 import parse
