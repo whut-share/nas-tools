@@ -6,7 +6,7 @@ import traceback
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
 from config import RMT_MEDIAEXT, RMT_SUBEXT, Config
-from rmt.metainfo import MetaInfo
+from rmt.metainfo import MetaVideo, is_anime
 import log
 from rmt.filetransfer import FileTransfer
 from utils.functions import singleton, is_invalid_path, is_path_in_path, is_bluray_dir, get_dir_level1_medias, \
@@ -18,6 +18,7 @@ from utils.sqls import is_transfer_in_blacklist, insert_sync_history, is_sync_in
 from watchdog.events import FileSystemEventHandler,FileCreatedEvent
 from itertools import groupby
 import parse
+import anitopy
 
 lock = threading.Lock()
 
@@ -278,12 +279,31 @@ class Sync(object):
                             tmp_file = [p for p in list_files if os.path.splitext(p)[-1] in RMT_MEDIAEXT][0]
                             target_file = None
                             if re.compile(r"第(\s\d{1,4}(-\d{1,4})?\s)集").search(tmp_file):
-                                # 电视剧
-                                meta_info = MetaInfo(file)
-                                if meta_info.end_episode is not None and meta_info.end_episode != meta_info.begin_episode:
-                                    ep = "%s-%s" % (str(meta_info.begin_episode), str(meta_info.end_episode))
+                                begin_episode = None
+                                end_episode = None
+                                if is_anime(file):
+                                    anitopy_info = anitopy.parse(file)
+                                    episode_number = anitopy_info.get("episode_number")
+                                    if isinstance(episode_number, list):
+                                        if len(episode_number) == 1:
+                                            begin_episode = episode_number[0]
+                                        else:
+                                            begin_episode = episode_number[0]
+                                            end_episode = episode_number[-1]
+                                    else:
+                                        begin_episode = episode_number
+                                    if isinstance(begin_episode, str) and begin_episode.isdigit():
+                                        begin_episode = int(begin_episode)
+                                    if isinstance(end_episode, str) and end_episode.isdigit() and end_episode is not None:
+                                        end_episode = int(end_episode)
                                 else:
-                                    ep = str(meta_info.begin_episode)
+                                    meta_info = MetaVideo(file)
+                                    begin_episode = meta_info.begin_episode
+                                    end_episode = meta_info.end_episode
+                                if end_episode is not None and end_episode != begin_episode:
+                                    ep = "%s-%s" % (str(begin_episode), str(end_episode))
+                                else:
+                                    ep = str(begin_episode)
                                 ret = parse.parse("{tmp}第{ep}集{end}", tmp_file)
                                 if ret and ret.__contains__("ep") and ret.__getitem__("ep").strip() == ep:
                                     tmp_list_files = list(filter(lambda x: x.find("第 %s 集" % ep) > -1, list_files))
