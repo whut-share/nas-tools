@@ -350,7 +350,6 @@ class Sync(object):
                 except Exception as e:
                     log.error("【RUN】%s 启动目录监控失败：%s" % (monpath, str(e)))
 
-
     def stop_service(self):
         """
         关闭监控服务

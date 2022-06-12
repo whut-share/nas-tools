@@ -374,7 +374,7 @@ class FileTransfer:
         :param episode: (EpisodeFormat，是否批处理匹配，转移记录的ID)
         :param min_filesize: 过滤小文件大小的上限值
         :param udf_flag: 自定义转移标志，为True时代表是自定义转移，此时很多处理不一样
-        :param subtitle_format: 字符定位
+        :param subtitle_format: 字幕定位
         :return: 处理状态，错误信息
         """
         episode = (None, False, None) if not episode else episode
