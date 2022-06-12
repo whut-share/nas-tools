@@ -1,17 +1,22 @@
 import os
+import re
 import threading
 import traceback
 
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
-from config import RMT_MEDIAEXT, Config
+from watchdog.observers.read_directory_changes import WindowsApiObserver
+from config import RMT_MEDIAEXT, RMT_SUBEXT, Config
+from rmt.metainfo import MetaInfo
 import log
 from rmt.filetransfer import FileTransfer
 from utils.functions import singleton, is_invalid_path, is_path_in_path, is_bluray_dir, get_dir_level1_medias, \
     get_dir_files
 from utils.sqls import is_transfer_in_blacklist, insert_sync_history, is_sync_in_history
 from utils.types import SyncType, OsType
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler,FileCreatedEvent
+from itertools import groupby
+import parse
 
 lock = threading.Lock()
 
@@ -22,23 +27,29 @@ class FileMonitorHandler(FileSystemEventHandler):
     """
     def __init__(self, monpath, sync, **kwargs):
         super(FileMonitorHandler, self).__init__(**kwargs)
-        self._watch_path = monpath
+        self._watch_path = os.path.normpath(monpath)
         self.sync = sync
+        self.only_monitor_subtitle = False
+        if self._watch_path in self.sync.monitor_sub_title_dirs:
+            self.only_monitor_subtitle = True
 
     def on_created(self, event):
-        self.sync.file_change_handler(event, "创建", event.src_path)
+        self.sync.file_change_handler(event, "创建", event.src_path, self.only_monitor_subtitle)
 
     def on_moved(self, event):
-        self.sync.file_change_handler(event, "移动", event.dest_path)
+        if not self.only_monitor_subtitle:
+            self.sync.file_change_handler(event, "移动", event.dest_path, self.only_monitor_subtitle)
 
     def on_modified(self, event):
-        self.sync.file_change_handler(event, "修改", event.src_path)
+        if not self.only_monitor_subtitle:
+            self.sync.file_change_handler(event, "修改", event.src_path, self.only_monitor_subtitle)
 
 
 @singleton
 class Sync(object):
     filetransfer = None
     sync_dir_config = {}
+    monitor_sub_title_dirs = set()
     __observer = []
     __sync_path = None
     __sync_sys = OsType.LINUX
@@ -63,12 +74,16 @@ class Sync(object):
         初始化监控文件配置
         """
         self.sync_dir_config = {}
+        self.monitor_sub_title_dirs = set()
         if self.__sync_path:
             for sync_monpath in self.__sync_path:
                 if not sync_monpath:
                     continue
                 only_link = False
                 enabled = True
+                tmp = sync_monpath.split("&")
+                sync_monpath = tmp[0]
+                vars = tmp[1:]
                 if sync_monpath.startswith('#'):
                     enabled = False
                     sync_monpath = sync_monpath[1:-1]
@@ -98,6 +113,10 @@ class Sync(object):
                         log.info("【SYNC】读取到监控目录：%s，目的目录：%s" % (monpath, target_path))
                     else:
                         log.info("【SYNC】读取到监控目录：%s" % monpath)
+                    for v in vars:
+                        if v.startswith("subtitle_enable_flag=1"):
+                            if os.path.exists(target_path):
+                                self.monitor_sub_title_dirs.add(os.path.normpath(target_path))
                     if not enabled:
                         log.info("【SYNC】%s 不进行监控和同步：手动关闭" % monpath)
                         continue
@@ -120,14 +139,15 @@ class Sync(object):
                 else:
                     log.error("【SYNC】%s 目录不存在！" % monpath)
 
-    def file_change_handler(self, event, text, event_path):
+    def file_change_handler(self, event, text, event_path, only_monitor_subtitle = False):
         """
         处理文件变化
         :param event: 事件
         :param text: 事件描述
         :param event_path: 事件文件路径
+        :param only_monitor_subtitle: 是否是监控字幕目录
         """
-        if not event.is_directory:
+        if not event.is_directory and not only_monitor_subtitle:
             # 文件发生变化
             try:
                 if not os.path.exists(event_path):
@@ -239,7 +259,42 @@ class Sync(object):
                             lock.release()
             except Exception as e:
                 log.error("【SYNC】发生错误：%s - %s" % (str(e), traceback.format_exc()))
-
+        elif isinstance(event, FileCreatedEvent) and only_monitor_subtitle:
+            if os.path.exists(event_path):
+                file = os.path.basename(event_path)
+                flag = False
+                if file.find(".zh-cn") > -1:
+                    file = file.replace(".zh-cn", "")
+                if os.path.splitext(file)[-1].lower() in RMT_SUBEXT:
+                    dir_name = os.path.dirname(event_path)
+                    list_files = os.listdir(dir_name)
+                    paths = list(filter(lambda x: os.path.splitext(file)[0].find(x) > -1, map(lambda x: os.path.splitext(x)[0], list_files)))
+                    for k, v in groupby(paths):
+                        if k == os.path.splitext(file)[0] and len(list(v)) == 1:
+                            tmp_file = [p for p in list_files if os.path.splitext(p)[-1] in RMT_MEDIAEXT][0]
+                            target_file = None
+                            if re.compile(r"第(\s\d{1,4}(-\d{1,4})?\s)集").search(tmp_file):
+                                # 电视剧
+                                meta_info = MetaInfo(file)
+                                if meta_info.end_episode is not None and meta_info.end_episode != meta_info.begin_episode:
+                                    ep = "%s-%s" % (str(meta_info.begin_episode), str(meta_info.end_episode))
+                                else:
+                                    ep = str(meta_info.begin_episode)
+                                ret = parse.parse("{tmp}第{ep}集{end}", tmp_file)
+                                if ret and ret.__contains__("ep") and ret.__getitem__("ep").strip() == ep:
+                                    tmp_list_files = list(filter(lambda x: x.find("第 %s 集" % ep) > -1, list_files))
+                                    if len(tmp_list_files) > 0:
+                                        target_file = str(os.path.splitext(tmp_list_files[0])[0]) + (".zh-cn" if flag else "") + str(os.path.splitext(file)[-1])
+                                else:
+                                    continue
+                            else:
+                                target_file = os.path.splitext(tmp_file)[0] + (".zh-cn" if flag else "") + os.path.splitext(file)[-1]
+                            source_f = "{dir_path}{sep}{file}".format(dir_path = dir_name, file = file, sep=os.sep)
+                            target_f = "{dir_path}{sep}{target_file}".format(dir_path=dir_name, target_file=target_file, sep=os.sep)
+                            if target_file and not os.path.exists(target_f):
+                                log.info("【SYNC】字母重命名: %s \n--> %s" % (source_f, target_f))
+                                os.rename(source_f, target_f)
+                            break
     def transfer_mon_files(self):
         """
         批量转移文件，由定时服务定期调用执行
@@ -276,12 +331,14 @@ class Sync(object):
         启动监控服务
         """
         self.__observer = []
-        for monpath in self.sync_dir_config.keys():
+        for monpath in list(self.sync_dir_config.keys()) + list(self.monitor_sub_title_dirs):
             if monpath and os.path.exists(monpath):
                 try:
                     if self.__sync_sys == OsType.LINUX:
                         # linux
                         observer = Observer()
+                    elif self.__sync_sys == OsType.WINDOWS:
+                        observer = WindowsApiObserver()
                     else:
                         # 其他
                         observer = PollingObserver()
@@ -292,6 +349,7 @@ class Sync(object):
                     log.info("【RUN】%s 的监控服务启动..." % monpath)
                 except Exception as e:
                     log.error("【RUN】%s 启动目录监控失败：%s" % (monpath, str(e)))
+
 
     def stop_service(self):
         """
