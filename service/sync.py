@@ -75,6 +75,8 @@ class Sync(object):
         初始化监控文件配置
         """
         self.sync_dir_config = {}
+        for p in self.monitor_sub_title_dirs:
+            log.info("【SYNC】关闭监控目录字幕变化: %s" % p)
         self.monitor_sub_title_dirs = set()
         if self.__sync_path:
             for sync_monpath in self.__sync_path:
@@ -117,6 +119,7 @@ class Sync(object):
                     for v in vars:
                         if v.startswith("subtitle_enable_flag=1"):
                             if os.path.exists(target_path):
+                                log.info("【SYNC】开启监控目录字幕变化: %s" % target_path)
                                 self.monitor_sub_title_dirs.add(os.path.normpath(target_path))
                     if not enabled:
                         log.info("【SYNC】%s 不进行监控和同步：手动关闭" % monpath)

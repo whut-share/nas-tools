@@ -43,7 +43,7 @@
                   <th class="w-5 text-nowrap">识别重命名</th>
                   <th class="w-5 text-nowrap">开启同步</th>
                   <th class="w-5 text-nowrap">监控目的目录字幕(<a href="#"
-                  title="将检测目的地目录下新增字幕文件，自动更名视频相应视频，已经存在字幕的不会更新; &#10v1.5.4之前建的需要重建，否则无法生效" style="color: red">注意</a>)</th>
+                  title="将检测目的地目录下新增字幕文件，自动更名视频相应视频，已经存在字幕的不会更新;" style="color: red">注意</a>)</th>
                   <th class="w-3"></th>
                 </tr>
               </thead>
@@ -182,11 +182,8 @@
       if (!$("#enable_flag").prop("checked")) {
           value = "#" + value + "#";
       }
-      value += "&" + "subtitle_enable_flag=";
       if (!$("#subtitle_enable_flag").prop("checked")) {
-          value += "1";
-      } else {
-          value += "0";
+          value += "&subtitle_enable_flag=1";
       }
       var params = {"oper": "add", "key": "sync.sync_path", "value": value};
       $("#modal-directory").modal('hide');
@@ -214,9 +211,7 @@
 
       value += "&" + "subtitle_enable_flag=";
       if (subtitle_enable_flag === "True") {
-          value += "1";
-      } else {
-          value += "0";
+          value += "&subtitle_enable_flag=1";
       }
       var params = {"oper": "sub", "key": "sync.sync_path", "value": value};
       ajax_post("update_directory", params, function (ret) {
@@ -247,14 +242,9 @@
           replace_value = "#" + replace_value + "#";
       }
 
-      value += "&" + "subtitle_enable_flag=";
-      replace_value += "&" + "subtitle_enable_flag=";
       if (subtitle_enable_flag === "True") {
-          value += "1";
-          replace_value += "1";
-      } else {
-          value += "0";
-          replace_value += "0";
+          value += "&subtitle_enable_flag=1";
+          replace_value += "&subtitle_enable_flag=1";
       }
 
       var params = {"oper": "set", "key": "sync.sync_path", "value": value, "replace_value": replace_value};
@@ -286,14 +276,9 @@
           replace_value = "#" + replace_value + "#";
       }
 
-      value += "&" + "subtitle_enable_flag=";
-      replace_value += "&" + "subtitle_enable_flag=";
       if (subtitle_enable_flag === "True") {
-          value += "1";
-          replace_value += "1";
-      } else {
-          value += "0";
-          replace_value += "0";
+          value += "&subtitle_enable_flag=1";
+          replace_value += "&subtitle_enable_flag=1";
       }
 
       var params = {"oper": "set", "key": "sync.sync_path", "value": value, "replace_value": replace_value};
@@ -320,18 +305,12 @@
           value = "#" + value + "#";
       }
 
-      value += "&" + "subtitle_enable_flag=";
       let replace_value = value
       if (new_enabled) {
-          replace_value += "1"
-      } else {
-          replace_value += "0";
+          replace_value += "&subtitle_enable_flag=1";
       }
-
       if (subtitle_enable_flag === "True") {
-          value += "1";
-      } else {
-          value += "0";
+          value += "&subtitle_enable_flag=1";
       }
 
       var params = {"oper": "set", "key": "sync.sync_path", "value": value, "replace_value": replace_value};
