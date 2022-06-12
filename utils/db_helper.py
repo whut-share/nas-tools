@@ -34,8 +34,8 @@ class DBHelper:
         conn = self.__pools.get()
         cursor = conn.cursor()
         try:
-            # Jackett搜索结果表
-            cursor.execute('''CREATE TABLE IF NOT EXISTS SEARCH_TORRENTS_RESULT
+            # 资源搜索结果表
+            cursor.execute('''CREATE TABLE IF NOT EXISTS SEARCH_RESULT_INFO
                                    (ID INTEGER PRIMARY KEY AUTOINCREMENT     NOT NULL,
                                    TORRENT_NAME    TEXT,
                                    ENCLOSURE    TEXT,
@@ -58,9 +58,12 @@ class DBHelper:
                                    PEERS    INTEGER,                   
                                    SITE    TEXT,
                                    SITE_ORDER    TEXT,
-                                   FREELEECH    TEXT,
                                    PAGEURL    TEXT,
-                                   OTHERINFO    TEXT);''')
+                                   OTHERINFO    TEXT,
+                                   UPLOAD_VOLUME_FACTOR REAL,
+                                   DOWNLOAD_VOLUME_FACTOR REAL,
+                                   NOTE     TEXT);''')
+
             # RSS下载记录表
             cursor.execute('''CREATE TABLE IF NOT EXISTS RSS_TORRENTS
                                    (ID INTEGER PRIMARY KEY AUTOINCREMENT     NOT NULL,

@@ -13,7 +13,7 @@ from utils.types import MediaType, RmtMode
 def insert_search_results(media_items: list):
     if not media_items:
         return
-    sql = "INSERT INTO SEARCH_TORRENTS_RESULT(" \
+    sql = "INSERT INTO SEARCH_RESULT_INFO(" \
           "TORRENT_NAME," \
           "ENCLOSURE," \
           "DESCRIPTION," \
@@ -35,9 +35,10 @@ def insert_search_results(media_items: list):
           "PEERS," \
           "SITE," \
           "SITE_ORDER," \
-          "FREELEECH," \
-          "PAGEURL) VALUES (" \
-          " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "PAGEURL," \
+          "UPLOAD_VOLUME_FACTOR," \
+          "DOWNLOAD_VOLUME_FACTOR) VALUES (" \
+          " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     data_list = []
     for media_item in media_items:
         if media_item.type == MediaType.TV:
@@ -69,8 +70,9 @@ def insert_search_results(media_items: list):
                 media_item.peers,
                 media_item.site,
                 media_item.site_order,
-                "1" if media_item.freeleech else "0",
-                str_sql(media_item.page_url)
+                str_sql(media_item.page_url),
+                media_item.upload_volume_factor,
+                media_item.download_volume_factor
             )
         )
     return update_by_sql_batch(sql, data_list)
@@ -79,7 +81,7 @@ def insert_search_results(media_items: list):
 # 根据ID从数据库中查询检索结果的一条记录
 def get_search_result_by_id(dl_id):
     sql = "SELECT ENCLOSURE,TITLE,YEAR,SEASON,EPISODE,VOTE,IMAGE,TYPE,TORRENT_NAME,DESCRIPTION,SIZE,TMDBID,POSTER,OVERVIEW,SITE" \
-          " FROM SEARCH_TORRENTS_RESULT" \
+          " FROM SEARCH_RESULT_INFO" \
           " WHERE ID = ?"
     return select_by_sql(sql, (dl_id,))
 
@@ -87,8 +89,8 @@ def get_search_result_by_id(dl_id):
 # 查询检索结果的所有记录
 def get_search_results():
     sql = "SELECT ID,TITLE||' ('||YEAR||') '||ES_STRING,RES_TYPE,SIZE,SEEDERS," \
-          "ENCLOSURE,SITE,YEAR,ES_STRING,IMAGE,TYPE,VOTE*1,TORRENT_NAME,DESCRIPTION,TMDBID,POSTER,OVERVIEW,FREELEECH,PAGEURL,OTHERINFO" \
-          " FROM SEARCH_TORRENTS_RESULT"
+          "ENCLOSURE,SITE,YEAR,ES_STRING,IMAGE,TYPE,VOTE*1,TORRENT_NAME,DESCRIPTION,TMDBID,POSTER,OVERVIEW,PAGEURL,OTHERINFO,UPLOAD_VOLUME_FACTOR,DOWNLOAD_VOLUME_FACTOR" \
+          " FROM SEARCH_RESULT_INFO"
     return select_by_sql(sql)
 
 
@@ -125,7 +127,7 @@ def is_torrent_rssd(media_info: MetaBase):
 
 # 删除所有搜索的记录
 def delete_all_search_torrents():
-    return update_by_sql("DELETE FROM SEARCH_TORRENTS_RESULT")
+    return update_by_sql("DELETE FROM SEARCH_RESULT_INFO")
 
 
 # 将RSS的记录插入数据库
@@ -798,7 +800,7 @@ def insert_download_history(media_info: MetaBase):
 
 
 # 查询下载历史
-def get_download_history(date=None, hid=None):
+def get_download_history(date=None, hid=None, num=100):
     if hid:
         sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY WHERE ID = ?"
         return select_by_sql(sql, (hid,))
@@ -806,8 +808,8 @@ def get_download_history(date=None, hid=None):
         sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY WHERE DATE > ? ORDER BY DATE DESC"
         return select_by_sql(sql, (date,))
     else:
-        sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY ORDER BY DATE DESC"
-        return select_by_sql(sql)
+        sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY ORDER BY DATE DESC LIMIT ?"
+        return select_by_sql(sql, (num,))
 
 
 # 根据标题和年份检查是否下载过
