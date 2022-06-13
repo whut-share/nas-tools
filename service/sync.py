@@ -267,10 +267,10 @@ class Sync(object):
         elif isinstance(event, FileCreatedEvent) and only_monitor_subtitle:
             if os.path.exists(event_path):
                 file = os.path.basename(event_path)
-                flag = False
-                if file.find(".zh-cn") > -1:
-                    file = file.replace(".zh-cn", "")
                 if os.path.splitext(file)[-1].lower() in RMT_SUBEXT:
+                    flag = False
+                    if file.find(".zh-cn") > -1:
+                        file = file.replace(".zh-cn", "")
                     dir_name = os.path.dirname(event_path)
                     list_files = os.listdir(dir_name)
                     paths = list(filter(lambda x: os.path.splitext(file)[0].find(x) > -1, map(lambda x: os.path.splitext(x)[0], list_files)))
@@ -300,17 +300,18 @@ class Sync(object):
                                     meta_info = MetaVideo(file)
                                     begin_episode = meta_info.begin_episode
                                     end_episode = meta_info.end_episode
+
                                 if end_episode is not None and end_episode != begin_episode:
                                     ep = "%s-%s" % (str(begin_episode), str(end_episode))
                                 else:
                                     ep = str(begin_episode)
-                                ret = parse.parse("{tmp}第{ep}集{end}", tmp_file)
-                                if ret and ret.__contains__("ep") and ret.__getitem__("ep").strip() == ep:
-                                    tmp_list_files = list(filter(lambda x: x.find("第 %s 集" % ep) > -1, list_files))
-                                    if len(tmp_list_files) > 0:
-                                        target_file = str(os.path.splitext(tmp_list_files[0])[0]) + (".zh-cn" if flag else "") + str(os.path.splitext(file)[-1])
-                                else:
-                                    continue
+                                for tf in [p for p in list_files if os.path.splitext(p)[-1] in RMT_MEDIAEXT]:
+                                    ret = parse.parse("{tmp}第{ep}集{end}", tf)
+                                    if ret and ret.__contains__("ep") and ret.__getitem__("ep").strip() == ep:
+                                        target_file = str(os.path.splitext(tf)[0]) + (".zh-cn" if flag else "") + str(os.path.splitext(file)[-1])
+                                        break
+                                    else:
+                                        continue
                             else:
                                 target_file = os.path.splitext(tmp_file)[0] + (".zh-cn" if flag else "") + os.path.splitext(file)[-1]
                             source_f = "{dir_path}{sep}{file}".format(dir_path = dir_name, file = file, sep=os.sep)
