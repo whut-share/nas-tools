@@ -3,7 +3,7 @@ import logging
 import os.path
 import traceback
 from math import floor
-from flask import Flask, request, json, render_template, make_response, session
+from flask import Flask, request, json, render_template, make_response, session, send_from_directory
 from flask_login import LoginManager, UserMixin, login_user, login_required, current_user
 from werkzeug.security import check_password_hash
 import xml.dom.minidom
@@ -484,11 +484,14 @@ def create_flask_app(config):
     def rss_calendar():
         Today = datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d')
         RssMovieIds = [movie[2] for movie in get_rss_movies()]
+        RssMovieNames = [movie[0] for movie in get_rss_movies()]
         RssTvItems = [{"id": tv[3], "season": int(str(tv[2]).replace("S", "")), "name": tv[0]} for tv in get_rss_tvs()]
         Events = []
         TmdbMovies = Media().get_tmdb_upcoming_movies(1)
         for movie in TmdbMovies:
-            if movie.get("release_date") and movie.get("id") not in RssMovieIds:
+            if movie.get("release_date") \
+                    and movie.get("id") not in RssMovieIds \
+                    and movie.get("title") not in RssMovieNames:
                 year = movie.get("release_date")[0:4]
                 Events.append(
                     {"type": "电影",
@@ -501,7 +504,9 @@ def create_flask_app(config):
         DoubanMovies = DoubanApi().movie_soon(count=50)
         if DoubanMovies:
             for movie in DoubanMovies.get("subject_collection_items"):
-                if movie.get("release_date") and "DB:%s" % movie.get("id") not in RssMovieIds:
+                if movie.get("release_date") \
+                        and "DB:%s" % movie.get("id") not in RssMovieIds \
+                        and movie.get("title") not in RssMovieNames:
                     release_date = "%s-%s" % (datetime.datetime.now().year, movie.get("release_date").replace(".", "-"))
                     Events.append(
                         {"type": "电影",
@@ -1247,6 +1252,11 @@ def create_flask_app(config):
         if data:
             data = json.loads(data)
         return WebAction().action(cmd, data)
+
+    # 禁止搜索引擎
+    @App.route('/robots.txt', methods=['GET', 'POST'])
+    def robots():
+        return send_from_directory("", "robots.txt")
 
     # 响应企业微信消息
     @App.route('/wechat', methods=['GET', 'POST'])

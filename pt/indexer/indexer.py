@@ -140,21 +140,20 @@ class IIndexer(metaclass=ABCMeta):
             description = item.get('description')
             seeders = item.get('seeders')
             peers = item.get('peers')
-            freeleech = item.get('freeleech')
             page_url = item.get('page_url')
             uploadvolumefactor = float(item.get('uploadvolumefactor'))
             downloadvolumefactor = float(item.get('downloadvolumefactor'))
 
             # 合匹配模式下，过滤掉做种数为0的
             if match_type == 1 and not seeders:
-                log.info(f"【{self.index_type}】{torrent_name} 做种数为0，跳过...")
+                log.info(f"【{self.index_type}】{torrent_name} 做种数为0")
                 continue
 
             # 检查资源类型
             if match_type == 1:
                 match_flag, res_order = Torrent.check_resouce_types(torrent_name, description, self.__res_type)
                 if not match_flag:
-                    log.info(f"【{self.index_type}】{torrent_name} 不符合过滤条件")
+                    log.info(f"【{self.index_type}】{torrent_name} 不符合过滤规则")
                     continue
             else:
                 res_order = Torrent.check_res_order(torrent_name, description, self.__res_type)
@@ -163,9 +162,12 @@ class IIndexer(metaclass=ABCMeta):
             meta_info = MetaInfo(torrent_name)
             if not meta_info.get_name():
                 continue
-            if meta_info.type not in [MediaType.MOVIE, MediaType.UNKNOWN] and filter_args.get(
-                    "type") == MediaType.MOVIE:
-                log.info(f"【{self.index_type}】{torrent_name} 是 {meta_info.type.value}，类型不匹配")
+            if meta_info.type == MediaType.UNKNOWN:
+                log.info(f"【{self.index_type}】{torrent_name} 无法识别")
+                continue
+
+            if meta_info.type != MediaType.MOVIE and filter_args.get("type") == MediaType.MOVIE:
+                log.info(f"【{self.index_type}】{torrent_name} 是 {meta_info.type.value}，不匹配类型：{filter_args.get('type')}")
                 continue
 
             # 有高级过滤条件时，先过滤一遍
@@ -201,13 +203,15 @@ class IIndexer(metaclass=ABCMeta):
             if match_type != 2:
                 media_info = self.media.get_media_info(title=torrent_name, subtitle=description)
                 if not media_info or not media_info.tmdb_info:
-                    log.info(f"【{self.index_type}】{torrent_name} 未查询到媒体信息")
+                    log.debug(f"【{self.index_type}】{torrent_name} 未匹配到媒体信息")
                     continue
 
                 # 类型
-                if filter_args.get("type") and media_info.type != filter_args.get("type"):
-                    log.info(f"【{self.index_type}】{torrent_name} 是 {media_info.type.value}，不匹配类型")
-                    continue
+                if filter_args.get("type"):
+                    if filter_args.get("type") != MediaType.MOVIE and media_info.type == MediaType.MOVIE \
+                            or filter_args.get("type") == MediaType.MOVIE and media_info.type != MediaType.MOVIE:
+                        log.info(f"【{self.index_type}】{torrent_name} 是 {media_info.type.value}，不匹配类型：{filter_args.get('type')}")
+                        continue
 
                 # 名称是否匹配
                 if match_type == 1:
