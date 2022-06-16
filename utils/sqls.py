@@ -417,6 +417,17 @@ def get_rss_movie_id(title, year):
     return ""
 
 
+# 获取订阅电影站点
+def get_rss_movie_sites(rssid):
+    if not rssid:
+        return ""
+    sql = "SELECT DESC FROM RSS_MOVIES WHERE ID = ?"
+    ret = select_by_sql(sql, (rssid,))
+    if ret:
+        return ret[0][0]
+    return ""
+
+
 # 更新订阅电影的TMDBID
 def update_rss_movie_tmdbid(rid, tmdbid):
     if not tmdbid:
@@ -438,7 +449,7 @@ def is_exists_rss_movie(title, year):
 
 
 # 新增RSS电影
-def insert_rss_movie(media_info: MetaBase, state='D'):
+def insert_rss_movie(media_info: MetaBase, state='D', sites: list = None):
     if not media_info:
         return False
     if not media_info.title:
@@ -450,7 +461,7 @@ def insert_rss_movie(media_info: MetaBase, state='D'):
                                str_sql(media_info.year),
                                str_sql(media_info.tmdb_id),
                                str_sql(media_info.get_backdrop_path()),
-                               str_sql(media_info.overview),
+                               "" if not sites else "|".join(sites),
                                state))
 
 
@@ -510,6 +521,17 @@ def get_rss_tv_id(title, year, season=None):
     return ""
 
 
+# 获取订阅电视剧站点
+def get_rss_tv_sites(rssid):
+    if not rssid:
+        return ""
+    sql = "SELECT DESC FROM RSS_TVS WHERE ID = ?"
+    ret = select_by_sql(sql, (rssid,))
+    if ret:
+        return ret[0][0]
+    return ""
+
+
 # 更新订阅电影的TMDBID
 def update_rss_tv_tmdbid(rid, tmdbid):
     if not tmdbid:
@@ -535,7 +557,7 @@ def is_exists_rss_tv(title, year, season=None):
 
 
 # 新增RSS电视剧
-def insert_rss_tv(media_info: MetaBase, total, lack=0, state="D"):
+def insert_rss_tv(media_info: MetaBase, total, lack=0, state="D", sites: list = None):
     if not media_info:
         return False
     if not media_info.title:
@@ -548,7 +570,7 @@ def insert_rss_tv(media_info: MetaBase, total, lack=0, state="D"):
                                media_info.get_season_string(),
                                str_sql(media_info.tmdb_id),
                                str_sql(media_info.get_backdrop_path()),
-                               str_sql(media_info.overview),
+                               "" if not sites else "|".join(sites),
                                total,
                                lack,
                                state))
