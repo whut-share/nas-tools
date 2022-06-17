@@ -75,7 +75,8 @@ class WebAction:
             "refresh_message": self.__refresh_message,
             "delete_tmdb_cache": self.__delete_tmdb_cache,
             "movie_calendar_data": self.__movie_calendar_data,
-            "tv_calendar_data": self.__tv_calendar_data
+            "tv_calendar_data": self.__tv_calendar_data,
+            "modify_tmdb_cache": self.__modify_tmdb_cache
         }
 
     def action(self, cmd, data):
@@ -547,9 +548,12 @@ class WebAction:
         查询实时日志
         """
         if log.LOG_INDEX:
-            text = "<br/>".join(list(log.LOG_QUEUE)[-log.LOG_INDEX:])
+            if log.LOG_INDEX > len(list(log.LOG_QUEUE)):
+                text = "<br/>".join(list(log.LOG_QUEUE))
+            else:
+                text = "<br/>".join(list(log.LOG_QUEUE)[-log.LOG_INDEX:])
             log.LOG_INDEX = 0
-            return {"text": text}
+            return {"text": text + "<br/>"}
         return {"text": ""}
 
     def __version(self, data):
@@ -1187,3 +1191,12 @@ class WebAction:
                     "vote_average": episode.get("vote_average") or "无"
                 })
             return {"code": 0, "events": episode_events}
+
+    @staticmethod
+    def __modify_tmdb_cache(data):
+        """
+        修改TMDB缓存的标题
+        """
+        if MetaHelper().modify_meta_data(data.get("key"), data.get("title")):
+            MetaHelper().save_meta_data(force=True)
+        return {"code": 0}
