@@ -317,7 +317,7 @@ class Sync(object):
                             source_f = "{dir_path}{sep}{file}".format(dir_path = dir_name, file = file, sep=os.sep)
                             target_f = "{dir_path}{sep}{target_file}".format(dir_path=dir_name, target_file=target_file, sep=os.sep)
                             if target_file and not os.path.exists(target_f):
-                                log.info("【SYNC】字母重命名: %s \n--> %s" % (source_f, target_f))
+                                log.info("【SYNC】字幕重命名: %s \n--> %s" % (source_f, target_f))
                                 os.rename(source_f, target_f)
                             break
     def transfer_mon_files(self):
