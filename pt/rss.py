@@ -1,10 +1,12 @@
 import traceback
 from threading import Lock
 
+import re
+from urllib import parse
 import requests
 import xml.dom.minidom
 import log
-from config import Config
+from config import Config, RSS_EXTRA_SITES
 from pt.searcher import Searcher
 from pt.torrent import Torrent
 from message.send import Message
@@ -240,7 +242,7 @@ class Rss:
             log.info("【RSS】共有 %s 个电影订阅需要检索" % len(movies))
         for movie in movies:
             name = movie[0]
-            year = movie[1]
+            year = movie[1] or ""
             tmdbid = movie[2]
             # 跳过模糊匹配的
             if not tmdbid:
@@ -248,7 +250,7 @@ class Rss:
             update_rss_movie_state(name, year, 'S')
             # 开始识别
             if tmdbid and not tmdbid.startswith("DB:"):
-                media_info = MetaInfo(title="%s %s" % (name, year))
+                media_info = MetaInfo(title="%s %s".strip() % (name, year))
                 tmdb_info = Media().get_tmdb_info(mtype=MediaType.MOVIE, title=name, year=year, tmdbid=tmdbid)
                 media_info.set_tmdb_info(tmdb_info)
             else:
@@ -287,7 +289,7 @@ class Rss:
             log.info("【RSS】共有 %s 个电视剧订阅需要检索" % len(tvs))
         for tv in tvs:
             name = tv[0]
-            year = tv[1]
+            year = tv[1] or ""
             season = tv[2]
             tmdbid = tv[3]
             lack = int(tv[7])
@@ -297,7 +299,7 @@ class Rss:
             update_rss_tv_state(name, year, season, 'S')
             # 开始识别
             if tmdbid and not tmdbid.startswith("DB:"):
-                media_info = MetaInfo(title="%s %s" % (name, year))
+                media_info = MetaInfo(title="%s %s".strip() % (name, year))
                 tmdb_info = Media().get_tmdb_info(mtype=MediaType.TV, title=name, year=year, tmdbid=tmdbid)
                 media_info.set_tmdb_info(tmdb_info)
             else:
@@ -327,7 +329,7 @@ class Rss:
                 update_rss_tv_state(name, year, season, 'R')
                 no_exist_items = no_exists.get(media_info.get_title_string())
                 for no_exist_item in no_exist_items:
-                    if no_exist_item.get("season") == media_info.begin_season:
+                    if str(no_exist_item.get("season")) == media_info.get_season_seq():
                         if no_exist_item.get("episodes"):
                             log.info("【RSS】更新电视剧 %s %s 缺失集数为 %s" % (
                                 media_info.get_title_string(), media_info.get_season_string(),
@@ -346,7 +348,7 @@ class Rss:
         for movie in movies:
             rid = movie[6]
             name = movie[0]
-            year = movie[1]
+            year = movie[1] or ""
             tmdbid = movie[2]
             if tmdbid and tmdbid.startswith("DB:"):
                 media_info = Media().get_media_info(title="%s %s" % (name, year), mtype=MediaType.MOVIE, strict=True)
@@ -357,7 +359,7 @@ class Rss:
         for tv in tvs:
             rid = tv[10]
             name = tv[0]
-            year = tv[1]
+            year = tv[1] or ""
             tmdbid = tv[3]
             if tmdbid and tmdbid.startswith("DB:"):
                 media_info = Media().get_media_info(title="%s %s" % (name, year), mtype=MediaType.TV, strict=True)
@@ -371,6 +373,21 @@ class Rss:
         :param url: RSS地址
         :return: 种子信息列表
         """
+
+        def tag_value(tag_item, tag_name, attname="", default=None):
+            tagNames = tag_item.getElementsByTagName(tag_name)
+            if tagNames:
+                if attname:
+                    attvalue = tagNames[0].getAttribute(attname)
+                    if attvalue:
+                        return attvalue
+                else:
+                    firstChild = tagNames[0].firstChild
+                    if firstChild:
+                        return firstChild.data
+            return default
+
+        # 开始处理
         ret_array = []
         if not url:
             return []
@@ -390,35 +407,43 @@ class Rss:
                 for item in items:
                     try:
                         # 标题
-                        title = ""
-                        tagNames = item.getElementsByTagName("title")
-                        if tagNames:
-                            firstChild = tagNames[0].firstChild
-                            if firstChild:
-                                title = firstChild.data
+                        title = tag_value(item, "title", default="")
                         if not title:
                             continue
-                        # 种子链接
-                        enclosure = ""
-                        # 大小
-                        size = 0
-                        tagNames = item.getElementsByTagName("enclosure")
-                        if tagNames:
-                            enclosure = tagNames[0].getAttribute("url")
-                            size = tagNames[0].getAttribute("length")
-                        if not enclosure:
-                            continue
-                        if size and size.isdigit():
-                            size = int(size)
-                        else:
-                            size = 0
                         # 描述
-                        description = ""
-                        tagNames = item.getElementsByTagName("description")
-                        if tagNames:
-                            firstChild = tagNames[0].firstChild
-                            if firstChild:
-                                description = firstChild.data
+                        description = tag_value(item, "description", default="")
+                        # 种子链接
+                        enclosure = tag_value(item, "enclosure", "url", default="")
+                        if not enclosure:
+                            # 种子链接
+                            enclosure = tag_value(item, "link", default="")
+                            # 大小
+                            size = 0
+                            size_map = {
+                                'KiB': 1024,
+                                'MiB': 1024 * 1024,
+                                'GiB': 1024 * 1024 * 1024,
+                                'TiB': 1024 * 1024 * 1024 * 1024
+                            }
+                            url_host = parse.urlparse(url).netloc
+                            if RSS_EXTRA_SITES[url_host] == 'Unit3D':
+                                size_temp = re.search(r'Size</strong>: (\d*\.\d*|\d*)(\s)(GiB|MiB|TiB|KiB)', description)
+                                if size_temp:
+                                    size = int(float(size_temp.group(1)) * size_map[size_temp.group(3)])
+                            elif RSS_EXTRA_SITES[url_host] == 'beyondhd':
+                                size_temp = re.search(r'(\d*\.\d*|\d*) (GiB|MiB|TiB|KiB)', title)
+                                if size_temp:
+                                    size = int(float(size_temp.group(1)) * size_map[size_temp.group(2)])
+                            else:
+                                continue
+                        else:
+                            # 大小
+                            size = tag_value(item, "enclosure", "length", default=0)
+                            if size and str(size).isdigit():
+                                size = int(size)
+                            else:
+                                size = 0
+                        # 返回对象
                         tmp_dict = {'title': title, 'enclosure': enclosure, 'size': size, 'description': description}
                         ret_array.append(tmp_dict)
                     except Exception as e1:

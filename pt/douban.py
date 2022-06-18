@@ -386,8 +386,8 @@ class DouBan:
                     # 查询数据库状态，已经加入RSS的不处理
                     search_state = get_douban_search_state(media.get_name(), media.year)
                     if not search_state or search_state[0][0] == "NEW":
-                        media_info = self.media.get_media_info(title="%s %s" % (media.get_name(), media.year),
-                                                               mtype=media.type, strict=True)
+                        media_info = self.media.get_media_info(title="%s %s" % (media.get_name(), media.year or ""),
+                                                               mtype=media.type)
                         if not media_info or not media_info.tmdb_info:
                             log.warn("【DOUBAN】%s 未查询到媒体信息" % media.get_name())
                             continue
@@ -428,7 +428,7 @@ class DouBan:
                                     # 取当前季的总集数
                                     else:
                                         for seasoninfo in no_exists_info:
-                                            if seasoninfo.get("season") == media_info.begin_season:
+                                            if str(seasoninfo.get("season")) == media_info.get_season_seq():
                                                 total_count = seasoninfo.get("total_episodes")
                                                 if seasoninfo.get("episodes"):
                                                     lack_count = len(seasoninfo.get("episodes"))
@@ -460,9 +460,8 @@ class DouBan:
                     for media in medias:
                         # 查询媒体信息
                         media_info = self.media.get_media_info(
-                            title="%s %s" % (media.get_name(), media.year),
-                            mtype=media.type,
-                            strict=True)
+                            title="%s %s" % (media.get_name(), media.year or ""),
+                            mtype=media.type)
                         if not media_info or not media_info.tmdb_info:
                             continue
                         if media_info.type != MediaType.MOVIE:
@@ -490,8 +489,8 @@ class DouBan:
                             media_info.begin_season = season
                             insert_rss_tv(media_info, total_count, total_count, 'R')
                         else:
-                            media_info = self.media.get_media_info(title=media.get_name(), mtype=media.type,
-                                                                   strict=True)
+                            media_info = self.media.get_media_info(title="%s %s" % (media.get_name(), media.year or ""),
+                                                                   mtype=media.type)
                             if not media_info or not media_info.tmdb_info:
                                 continue
                             insert_rss_movie(media_info, 'R')

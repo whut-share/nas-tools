@@ -82,21 +82,19 @@ class Media:
         ret_names = []
         try:
             if mtype == MediaType.MOVIE:
-                tmdb_info = self.movie.translations(tmdb_id)
+                tmdb_info = self.movie.alternative_titles(tmdb_id)
                 if tmdb_info:
-                    translations = tmdb_info.get("translations", [])
+                    translations = tmdb_info.get("titles", [])
                     for translation in translations:
-                        data = translation.get("data", {})
-                        title = data.get("title")
+                        title = translation.get("title")
                         if title and title not in ret_names:
                             ret_names.append(title)
             else:
-                tmdb_info = self.tv.translations(tmdb_id)
+                tmdb_info = self.tv.alternative_titles(tmdb_id)
                 if tmdb_info:
-                    translations = tmdb_info.get("translations", [])
+                    translations = tmdb_info.get("results", [])
                     for translation in translations:
-                        data = translation.get("data", {})
-                        name = data.get("name")
+                        name = translation.get("title")
                         if name and name not in ret_names:
                             ret_names.append(name)
         except Exception as e:
@@ -129,6 +127,7 @@ class Media:
             log.debug(f"【META】正在识别{search_type.value}：{file_media_name}, 年份={xstr(first_media_year)} ...")
             info = self.__search_movie_by_name(file_media_name, first_media_year)
             if info:
+                info['media_type'] = MediaType.MOVIE
                 log.info("%s 匹配到 %s：TMDBID=%s, 名称=%s, 上映日期=%s" % (file_media_name, search_type.value, info.get('id'), info.get('title'), info.get('release_date')))
         else:
             # 有当前季和当前季集年份，使用精确匹配
@@ -139,13 +138,13 @@ class Media:
                 log.debug(f"【META】正在识别{search_type.value}：{file_media_name}, 年份={xstr(first_media_year)} ...")
                 info = self.__search_tv_by_name(file_media_name, first_media_year)
             if info:
+                info['media_type'] = MediaType.TV
                 log.info("%s 匹配到 %s：TMDBID=%s, 名称=%s, 首播日期=%s" % (file_media_name, search_type.value, info.get('id'), info.get('name'), info.get('first_air_date')))
         # 补充类别信息
         if info:
-            info['media_type'] = search_type
             return info
         else:
-            log.info("【META】%s 以年份 %s 在TMDB中未匹配到%s信息!" % (file_media_name, first_media_year, search_type.value))
+            log.info("【META】%s 以年份 %s 在TMDB中未匹配到%s信息!" % (file_media_name, xstr(first_media_year), search_type.value))
             return None
 
     def __search_movie_by_name(self, file_media_name, first_media_year):
@@ -314,10 +313,10 @@ class Media:
         else:
             if mtype == MediaType.MOVIE:
                 tmdb_info = self.get_tmdb_movie_info(tmdbid)
+                tmdb_info['media_type'] = MediaType.MOVIE
             else:
                 tmdb_info = self.get_tmdb_tv_info(tmdbid)
-        if tmdb_info:
-            tmdb_info['media_type'] = mtype
+                tmdb_info['media_type'] = MediaType.TV
         return tmdb_info
 
     def search_tmdb_infos(self, title, year=None, mtype: MediaType = None, num=6):
@@ -392,8 +391,8 @@ class Media:
             meta_info.type.value, meta_info.get_name(), meta_info.year, meta_info.begin_season)
         if not self.meta.get_meta_data_by_key(media_key):
             # 缓存中没有开始查询
-            if meta_info.type in [MediaType.TV, MediaType.ANIME]:
-                # 确定是电视剧或动漫，直接按电视剧查
+            if meta_info.type == MediaType.TV:
+                # 确定是电视剧
                 file_media_info = self.__search_tmdb(file_media_name=meta_info.get_name(),
                                                      first_media_year=meta_info.year,
                                                      search_type=meta_info.type,
@@ -492,7 +491,7 @@ class Media:
                         if parent_info.type and parent_info.type not in [MediaType.MOVIE, MediaType.UNKNOWN] \
                                 and meta_info.type in [MediaType.MOVIE, MediaType.UNKNOWN]:
                             meta_info.type = parent_info.type
-                        if meta_info.type in [MediaType.TV, MediaType.ANIME]:
+                        if meta_info.type == MediaType.TV:
                             meta_info.begin_season = self.max_ele(parent_info.begin_season, meta_info.begin_season)
                             meta_info.end_season = self.max_ele(parent_info.end_season, meta_info.end_season)
                     if not meta_info.get_name():
@@ -523,8 +522,7 @@ class Media:
                 else:
                     meta_info = MetaInfo(file_name, mtype=media_type)
                     meta_info.set_tmdb_info(tmdb_info)
-                    meta_info.type = media_type
-                    if season and media_type != MediaType.MOVIE:
+                    if season and meta_info.type != MediaType.MOVIE:
                         meta_info.begin_season = int(season)
                     if episode_format:
                         begin_ep, end_ep = episode_format.split_episode(file_name)
