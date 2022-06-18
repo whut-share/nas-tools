@@ -318,8 +318,10 @@ class Sync(object):
                             target_f = "{dir_path}{sep}{target_file}".format(dir_path=dir_name, target_file=target_file, sep=os.sep)
                             if target_file and not os.path.exists(target_f):
                                 log.info("【SYNC】字幕重命名: %s \n--> %s" % (source_f, target_f))
-                                # os.rename(source_f, target_f)
-                                os.replace(source_f, target_f)
+                                if self.__sync_sys == OsType.WINDOWS:
+                                    os.rename(source_f, target_f)
+                                else:
+                                    os.system("mv %s %s" % (source_f, target_f))
                             break
     def transfer_mon_files(self):
         """
