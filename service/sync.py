@@ -321,7 +321,7 @@ class Sync(object):
                                 if self.__sync_sys == OsType.WINDOWS:
                                     os.rename(source_f, target_f)
                                 else:
-                                    os.system("mv %s %s" % (source_f, target_f))
+                                    os.system("mv \"%s\" \"%s\"" % (source_f, target_f))
                             break
     def transfer_mon_files(self):
         """
