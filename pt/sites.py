@@ -11,7 +11,7 @@ from utils.functions import singleton, num_filesize
 from utils.http_utils import RequestUtils
 from utils.sqls import get_config_site, insert_site_statistics_history, update_site_user_statistics
 from lxml import etree
-import cfscrape
+import cloudscraper
 lock = Lock()
 
 
@@ -87,8 +87,8 @@ class Sites:
                     return
                 # 防止卡在cloudflare
                 if html_text.find("title") == -1:
-                    scraper = cfscrape.create_scraper(delay = 10)
-                    res = scraper.get(url=site_url, cookies={"cookie": site_cookie}, headers={"User-Agent": f"{self.__user_agent}"}, verify=False)
+                    scraper = cloudscraper.create_scraper(delay = 10)
+                    res = scraper.get(url=site_url, cookies={"cookie": site_cookie}, headers={"User-Agent": f"{self.__user_agent}"})
                     if res and res.status_code == 200:
                         res.encoding = res.apparent_encoding
                         html_text = res.text
