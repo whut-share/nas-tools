@@ -8,11 +8,12 @@ import xml.dom.minidom
 import log
 from config import Config, RSS_EXTRA_SITES
 from pt.searcher import Searcher
-from pt.torrent import Torrent
 from message.send import Message
 from pt.downloader import Downloader
+from pt.torrent import Torrent
 from rmt.media import Media
 from rmt.metainfo import MetaInfo
+from utils.functions import tag_value
 from utils.sqls import get_rss_movies, get_rss_tvs, insert_rss_torrents, \
     get_config_site, is_torrent_rssd, get_config_rss_rule, delete_rss_movie, delete_rss_tv, update_rss_tv_lack, \
     update_rss_movie_state, update_rss_tv_state, update_rss_movie_tmdbid, update_rss_tv_tmdbid
@@ -24,10 +25,10 @@ lock = Lock()
 class Rss:
     __sites = None
     __rss_rule = None
+    __user_agent = None
     message = None
     media = None
     downloader = None
-    torrent = None
     searcher = None
 
     def __init__(self):
@@ -39,15 +40,14 @@ class Rss:
 
     def init_config(self):
         config = Config()
-        pt = config.get_config('pt')
-        if pt:
-            self.__sites = get_config_site()
-            rss_rule = get_config_rss_rule()
-            if rss_rule:
-                if rss_rule[0][1]:
-                    self.__rss_rule = str(rss_rule[0][1]).split("\n")
-                else:
-                    self.__rss_rule = None
+        self.__user_agent = config.get_config('app').get('user_agent')
+        self.__sites = get_config_site()
+        rss_rule = get_config_rss_rule()
+        if rss_rule:
+            if rss_rule[0][1]:
+                self.__rss_rule = str(rss_rule[0][1]).split("\n")
+            else:
+                self.__rss_rule = None
 
     def rssdownload(self):
         """
@@ -85,6 +85,9 @@ class Rss:
                 # 读取子配置
                 rss_job = site_info[1]
                 rssurl = site_info[3]
+                rss_cookie = site_info[5]
+                # 是否仅RSS促销
+                rss_free = str(site_info[9]).split("|")[0] if str(site_info[9]).split("|")[0] in ["FREE", "2XFREE"] else None
                 if not rssurl:
                     log.info("【RSS】%s 未配置rssurl，跳过..." % str(rss_job))
                     continue
@@ -111,6 +114,8 @@ class Rss:
                         torrent_name = res.get('title')
                         # 种子链接
                         enclosure = res.get('enclosure')
+                        # 种子页面
+                        page_url = res.get('link')
                         # 副标题
                         description = res.get('description')
                         # 种子大小
@@ -163,13 +168,29 @@ class Rss:
                                         media_info.get_title_string(), media_info.get_season_string()))
                                     delete_rss_tv(media_info.title, media_info.year, media_info.get_season_string())
                             continue
+                        # 判断种子是否免费
+                        download_volume_factor = 1.0
+                        upload_volume_factor = 1.0
+                        if rss_free:
+                            free_type = Torrent.check_torrent_free(torrent_url=page_url, cookie=rss_cookie, user_agent=self.__user_agent)
+                            if free_type == "2XFREE":
+                                download_volume_factor = 0.0
+                                upload_volume_factor = 2.0
+                            elif free_type == "FREE":
+                                download_volume_factor = 0.0
+                                upload_volume_factor = 1.0
+                            if rss_free != free_type:
+                                log.info("【RSS】%s 不是 %s 种子" % (torrent_name, rss_free))
+                                continue
                         # 返回对象
                         media_info.set_torrent_info(site_order=order_seq,
                                                     site=rss_job,
                                                     enclosure=enclosure,
                                                     res_order=res_order,
                                                     size=size,
-                                                    description=description)
+                                                    description=description,
+                                                    download_volume_factor=download_volume_factor,
+                                                    upload_volume_factor=upload_volume_factor)
                         # 插入数据库
                         insert_rss_torrents(media_info)
                         # 加入下载列表
@@ -373,20 +394,6 @@ class Rss:
         :param url: RSS地址
         :return: 种子信息列表
         """
-
-        def tag_value(tag_item, tag_name, attname="", default=None):
-            tagNames = tag_item.getElementsByTagName(tag_name)
-            if tagNames:
-                if attname:
-                    attvalue = tagNames[0].getAttribute(attname)
-                    if attvalue:
-                        return attvalue
-                else:
-                    firstChild = tagNames[0].firstChild
-                    if firstChild:
-                        return firstChild.data
-            return default
-
         # 开始处理
         ret_array = []
         if not url:
@@ -412,6 +419,8 @@ class Rss:
                             continue
                         # 描述
                         description = tag_value(item, "description", default="")
+                        # 种子页面
+                        link = tag_value(item, "link", default="")
                         # 种子链接
                         enclosure = tag_value(item, "enclosure", "url", default="")
                         if not enclosure:
@@ -444,7 +453,7 @@ class Rss:
                             else:
                                 size = 0
                         # 返回对象
-                        tmp_dict = {'title': title, 'enclosure': enclosure, 'size': size, 'description': description}
+                        tmp_dict = {'title': title, 'enclosure': enclosure, 'size': size, 'description': description, 'link': link}
                         ret_array.append(tmp_dict)
                     except Exception as e1:
                         log.console(str(e1))

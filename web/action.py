@@ -1,11 +1,13 @@
 import _thread
 import importlib
 import signal
+from urllib import parse
+
 from flask_login import logout_user
 from werkzeug.security import generate_password_hash
 
 import log
-from config import RMT_MEDIAEXT, Config
+from config import RMT_MEDIAEXT, Config, GRAP_FREE_SITES
 from message.channel.telegram import Telegram
 from message.channel.wechat import WeChat
 from message.send import Message
@@ -298,6 +300,8 @@ class WebAction:
             msg_item.overview = res[13]
             msg_item.enclosure = res[0]
             msg_item.site = res[14]
+            msg_item.upload_volume_factor = float(res[15] or 1.0)
+            msg_item.download_volume_factor = float(res[16] or 1.0)
             Message().send_download_message(SearchType.WEB, msg_item)
         return {"retcode": 0}
 
@@ -483,7 +487,7 @@ class WebAction:
             media_type = MediaType.MOVIE
         else:
             media_type = MediaType.ANIME
-        tmdb_info = Media().get_tmdb_info(media_type, None, None, tmdbid)
+        tmdb_info = Media().get_tmdb_info(mtype=media_type, tmdbid=tmdbid)
         if not tmdb_info:
             return {"retcode": 1, "retmsg": "识别失败，无法查询到TMDB信息"}
         # 自定义转移
@@ -621,11 +625,16 @@ class WebAction:
         查询单个站点信息
         """
         tid = data.get("id")
+        site_free = False
         if tid:
             ret = get_site_by_id(tid)
+            if ret[0][3]:
+                url_host = parse.urlparse(ret[0][3]).netloc
+                if url_host in GRAP_FREE_SITES.keys():
+                    site_free = True
         else:
             ret = []
-        return {"code": 0, "site": ret}
+        return {"code": 0, "site": ret, "site_free": site_free}
 
     @staticmethod
     def __del_site(data):
@@ -1121,7 +1130,7 @@ class WebAction:
                         "vote_average": vote_average
                         }
         else:
-            tmdb_info = Media().get_tmdb_info(MediaType.MOVIE, None, None, tid)
+            tmdb_info = Media().get_tmdb_info(mtype=MediaType.MOVIE, tmdbid=tid)
             if not tmdb_info:
                 return {"code": 1, "retmsg": "无法查询到TMDB信息"}
             poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path')
