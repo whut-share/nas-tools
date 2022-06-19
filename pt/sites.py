@@ -87,8 +87,8 @@ class Sites:
                     return
                 # 防止卡在cloudflare
                 if html_text.find("title") == -1:
-                    scraper = cfscrape.create_scraper()
-                    res = scraper.get(url=site_url, cookies=site_cookie, headers={"User-Agent": f"{self.__user_agent}"}).content
+                    scraper = cfscrape.create_scraper(delay = 10)
+                    res = scraper.get(url=site_url, cookies={"cookie": site_cookie}, headers={"User-Agent": f"{self.__user_agent}"}, verify=False)
                     if res and res.status_code == 200:
                         res.encoding = res.apparent_encoding
                         html_text = res.text
