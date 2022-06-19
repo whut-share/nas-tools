@@ -10,7 +10,7 @@ from message.send import Message
 from utils.functions import singleton, num_filesize
 from utils.http_utils import RequestUtils
 from utils.sqls import get_config_site, insert_site_statistics_history, update_site_user_statistics
-
+from lxml import etree
 lock = Lock()
 
 
@@ -165,8 +165,16 @@ class Sites:
         upload_match = re.search(r"[^总]上[传傳]量?[:：<>/a-zA-Z-=\"'\s#;]+([0-9,.\s]+[KMGTPI]*B)", html_text, re.IGNORECASE)
         if upload_match:
             return num_filesize(upload_match.group(1).strip())
-        else:
-            return 0
+        html = etree.HTML(html_text)
+        # jpop
+        tmps = html.xpath('//ul[@id = "userinfo_stats"]//li')
+        if tmps:
+            return num_filesize(str(tmps[0].xpath("span//text()")[-1]).strip())
+        # ipt
+        tmps = html.xpath('//div[@class = "stats"]/div/div')
+        if tmps:
+            return num_filesize(str(tmps[0].xpath('span/text()')[1]).strip())
+        return 0
 
     def __get_site_download(self, html_text):
         """
@@ -177,8 +185,16 @@ class Sites:
                                    re.IGNORECASE)
         if download_match:
             return num_filesize(download_match.group(1).strip())
-        else:
-            return 0
+        html = etree.HTML(html_text)
+        # jpop
+        tmps = html.xpath('//ul[@id = "userinfo_stats"]//li')
+        if tmps:
+            return num_filesize(str(tmps[1].xpath("span//text()")[-1]).strip())
+        # ipt
+        tmps = html.xpath('//div[@class = "stats"]/div/div')
+        if tmps:
+            return num_filesize(str(tmps[0].xpath('span/text()')[2]).strip())
+        return 0
 
     def __get_site_ratio(self, html_text):
         """
@@ -188,8 +204,16 @@ class Sites:
         ratio_match = re.search(r"分享率[:：<>/a-zA-Z-=\"'\s#;]+([0-9.\s]+)", html_text)
         if ratio_match and ratio_match.group(1).strip():
             return float(ratio_match.group(1).strip())
-        else:
-            return 0
+        html = etree.HTML(html_text)
+        # jpop
+        tmps = html.xpath('//ul[@id = "userinfo_stats"]//li')
+        if tmps:
+            return float(str(tmps[2].xpath("span//text()")[-1]).strip())
+        # ipt
+        tmps = html.xpath('//div[@class = "stats"]/div/div')
+        if tmps:
+            return float(str(tmps[0].xpath('span/text()')[0]).strip())
+        return 0
 
     def __get_site_user_url(self, html_text):
         """
@@ -214,8 +238,20 @@ class Sites:
         user_name = re.search(r"userdetails.php\?id=\d+[a-zA-Z\"'=_\-\s]+>[<b>\s]*([^<>]*)[</b>]*</a>", html_text)
         if user_name and user_name.group(1).strip():
             return user_name.group(1).strip()
-        else:
-            return ""
+        html = etree.HTML(html_text)
+        ret = html.xpath('//a[contains(@href, "userdetails")]//b//text()')[-1]
+        if ret:
+            return str(ret)
+        ret = html.xpath('//a[contains(@href, "userdetails")]//text()')[-1]
+        if ret:
+            return str(ret)
+        ret = html.xpath('//a[contains(@href, "user.php")]//text()')[-1]
+        if ret:
+            return str(ret)
+        ret = html.xpath('//a[contains(@href, "/u/")]//text()')[-1]
+        if ret:
+            return str(ret)
+        return ""
 
     def __get_site_torrents(self, html_text):
         """
@@ -231,6 +267,11 @@ class Sites:
 
         if seeding_match and seeding_match.group(2).strip():
             seeding = int(seeding_match.group(2).strip())
+        else:
+            html = etree.HTML(html_text)
+            # ipt
+            tmps = html.xpath('//div[@class = "stats"]/div/div')
+            return int(tmps[0].xpath('a')[2].xpath('text()')[0].strip()), int(tmps[0].xpath('a')[2].xpath('text()')[1].strip())
 
         if leeching_match and leeching_match.group(2).strip():
             leeching = int(leeching_match.group(2).strip())
@@ -253,6 +294,15 @@ class Sites:
                 return float(bonus_match.group(1).strip().replace(',', ''))
         except Exception as err:
             print(str(err))
+        html = etree.HTML(html_text)
+        # jpop
+        tmps = html.xpath('//ul[@id = "userinfo_stats"]//li')
+        if tmps:
+            return float(str(tmps[2].xpath("span//text()")[-1]).strip())
+            # ipt
+        tmps = html.xpath('//div[@class = "stats"]/div/div')
+        if tmps:
+            return float(tmps[0].xpath('a')[3].xpath('text()'))
         return 0.0
 
     @staticmethod
