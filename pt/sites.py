@@ -239,18 +239,18 @@ class Sites:
         if user_name and user_name.group(1).strip():
             return user_name.group(1).strip()
         html = etree.HTML(html_text)
-        ret = html.xpath('//a[contains(@href, "userdetails")]//b//text()')[-1]
+        ret = html.xpath('//a[contains(@href, "userdetails")]//b//text()')
         if ret:
-            return str(ret)
-        ret = html.xpath('//a[contains(@href, "userdetails")]//text()')[-1]
+            return str(ret[-1])
+        ret = html.xpath('//a[contains(@href, "userdetails")]//text()')
         if ret:
-            return str(ret)
-        ret = html.xpath('//a[contains(@href, "user.php")]//text()')[-1]
+            return str(ret[-1])
+        ret = html.xpath('//a[contains(@href, "user.php")]//text()')
         if ret:
-            return str(ret)
-        ret = html.xpath('//a[contains(@href, "/u/")]//text()')[-1]
+            return str(ret[-1])
+        ret = html.xpath('//a[contains(@href, "/u/")]//text()')
         if ret:
-            return str(ret)
+            return str(ret[-1])
         return ""
 
     def __get_site_torrents(self, html_text):
@@ -295,6 +295,10 @@ class Sites:
         except Exception as err:
             print(str(err))
         html = etree.HTML(html_text)
+        # u2
+        tmps = html.xpath('//span[@class = "ucoin-symbol ucoin-gold"]//text()')
+        if tmps:
+            return float(str(tmps[-1]).strip())
         # jpop
         tmps = html.xpath('//ul[@id = "userinfo_stats"]//li')
         if tmps:
