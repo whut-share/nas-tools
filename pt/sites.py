@@ -271,8 +271,8 @@ class Sites:
             html = etree.HTML(html_text)
             # ipt
             tmps = html.xpath('//div[@class = "stats"]/div/div')
-            return int(tmps[0].xpath('a')[2].xpath('text()')[0].strip()), int(tmps[0].xpath('a')[2].xpath('text()')[1].strip())
-
+            if tmps:
+                return int(tmps[0].xpath('a')[2].xpath('text()')[0].strip()), int(tmps[0].xpath('a')[2].xpath('text()')[1].strip())
         if leeching_match and leeching_match.group(2).strip():
             leeching = int(leeching_match.group(2).strip())
 
