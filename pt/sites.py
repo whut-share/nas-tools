@@ -11,6 +11,7 @@ from utils.functions import singleton, num_filesize
 from utils.http_utils import RequestUtils
 from utils.sqls import get_config_site, insert_site_statistics_history, update_site_user_statistics
 from lxml import etree
+import cfscrape
 lock = Lock()
 
 
@@ -84,8 +85,15 @@ class Sites:
                 html_text = res.text
                 if not html_text:
                     return
-                if site_name in ["BTSCHOOL", "Jpop"]:
-                    print(html_text)
+                # 防止卡在cloudflare
+                if html_text.find("title") == -1:
+                    scraper = cfscrape.create_scraper()
+                    res = scraper.get(url=site_url, cookies=site_cookie, headers={"User-Agent": f"{self.__user_agent}"}).content
+                    if res and res.status_code == 200:
+                        res.encoding = res.apparent_encoding
+                        html_text = res.text
+                        if not html_text:
+                            return
                 # 上传量
                 upload = self.__get_site_upload(html_text)
                 # 下载量
