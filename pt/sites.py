@@ -84,6 +84,8 @@ class Sites:
                 html_text = res.text
                 if not html_text:
                     return
+                if site_name in ["BTSCHOOL", "Jpop"]:
+                    print(html_text)
                 # 上传量
                 upload = self.__get_site_upload(html_text)
                 # 下载量
@@ -297,7 +299,7 @@ class Sites:
         # ipt
         tmps = html.xpath('//div[@class = "stats"]/div/div')
         if tmps:
-            return float(tmps[0].xpath('a')[3].xpath('text()'))
+            return float(tmps[0].xpath('a')[3].xpath('text()')[0])
         bonus_match = re.search(r"mybonus.[\[\]:：<>/a-zA-Z_\-=\"'\s#;.(使用魔力值豆]+\s*([\d,.]+)[<()&\s]", html_text)
         try:
             if bonus_match and bonus_match.group(1).strip():
