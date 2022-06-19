@@ -247,7 +247,7 @@ class Sites:
             return str(ret[-1])
         ret = html.xpath('//a[contains(@href, "user.php")]//text()')
         if ret:
-            return str(ret[-1])
+            return str(ret[0])
         ret = html.xpath('//a[contains(@href, "/u/")]//text()')
         if ret:
             return str(ret[-1])
@@ -285,6 +285,19 @@ class Sites:
         :return:
         """
         html_text = self.__prepare_html_text(html_text)
+        html = etree.HTML(html_text)
+        # u2
+        tmps = html.xpath('//span[@class = "ucoin-symbol ucoin-gold"]//text()')
+        if tmps:
+            return float(str(tmps[-1]).strip())
+        # jpop
+        tmps = html.xpath('//ul[@id = "userinfo_stats"]//li')
+        if tmps:
+            return float(str(tmps[3].xpath("i//span//text()")[-1]).strip())
+        # ipt
+        tmps = html.xpath('//div[@class = "stats"]/div/div')
+        if tmps:
+            return float(tmps[0].xpath('a')[3].xpath('text()'))
         bonus_match = re.search(r"mybonus.[\[\]:：<>/a-zA-Z_\-=\"'\s#;.(使用魔力值豆]+\s*([\d,.]+)[<()&\s]", html_text)
         try:
             if bonus_match and bonus_match.group(1).strip():
@@ -294,19 +307,6 @@ class Sites:
                 return float(bonus_match.group(1).strip().replace(',', ''))
         except Exception as err:
             print(str(err))
-        html = etree.HTML(html_text)
-        # u2
-        tmps = html.xpath('//span[@class = "ucoin-symbol ucoin-gold"]//text()')
-        if tmps:
-            return float(str(tmps[-1]).strip())
-        # jpop
-        tmps = html.xpath('//ul[@id = "userinfo_stats"]//li')
-        if tmps:
-            return float(str(tmps[2].xpath("span//text()")[-1]).strip())
-            # ipt
-        tmps = html.xpath('//div[@class = "stats"]/div/div')
-        if tmps:
-            return float(tmps[0].xpath('a')[3].xpath('text()'))
         return 0.0
 
     @staticmethod

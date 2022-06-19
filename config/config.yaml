@@ -35,7 +35,7 @@ app:
   # 示例：http://IP:3000
   domain: ''
   # 【UserAgent】：可适当修改，用于PT站签到、豆瓣数据抓取等
-  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.124 Safari/537.36 Edg/102.0.1245.41"
 
 # 【配置媒体库信息】
 media:
