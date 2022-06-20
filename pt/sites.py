@@ -1,4 +1,3 @@
-import re
 import traceback
 from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
@@ -11,7 +10,7 @@ from pt.siteuserinfo.site_user_info_factory import SiteUserInfoFactory
 from utils.functions import singleton
 from utils.http_utils import RequestUtils
 from utils.sqls import get_config_site, insert_site_statistics_history, update_site_user_statistics
-from lxml import etree
+
 lock = Lock()
 
 
