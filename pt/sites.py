@@ -8,10 +8,9 @@ import log
 from config import Config
 from message.send import Message
 from utils.functions import singleton, num_filesize
-from utils.http_utils import RequestUtils
+from utils.http_utils import RequestUtils,requests
 from utils.sqls import get_config_site, insert_site_statistics_history, update_site_user_statistics
 from lxml import etree
-import cloudscraper
 lock = Lock()
 
 
@@ -85,15 +84,22 @@ class Sites:
                 html_text = res.text
                 if not html_text:
                     return
-                # 防止卡在cloudflare
+                # 第一次登录反爬
                 if html_text.find("title") == -1:
-                    scraper = cloudscraper.create_scraper(delay = 10)
-                    res = scraper.get(url=site_url, cookies={"cookie": site_cookie}, headers={"User-Agent": f"{self.__user_agent}"})
+                    i = html_text.find("window.location")
+                    if i == -1:
+                        return
+                    tmp_url = site_url + html_text[i:html_text.find(";")] \
+                        .replace("\"", "").replace("+", "").replace(" ", "").replace("window.location=", "")
+                    res = requests.get(url=tmp_url, cookies={"cookie": site_cookie}, headers={"User-Agent": f"{self.__user_agent}"})
                     if res and res.status_code == 200:
                         res.encoding = res.apparent_encoding
                         html_text = res.text
                         if not html_text:
                             return
+                    else:
+                        log.error("【PT】站点 %s 获取流量数据失败，状态码：%s, tmp_url: %s" % (site_name, res.status_code, tmp_url))
+                        return
                 # 上传量
                 upload = self.__get_site_upload(html_text)
                 # 下载量
