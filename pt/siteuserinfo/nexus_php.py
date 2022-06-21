@@ -65,7 +65,6 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
             2).strip() else 0
 
         html = etree.HTML(html_text)
-        #u2
         tmps = html.xpath('//span[@class = "ucoin-symbol ucoin-gold"]//text()')
         if tmps:
             self.bonus = float(str(tmps[-1]).strip())
@@ -103,6 +102,8 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
         soup = BeautifulSoup(html_text, "lxml")
         for tr in soup.find_all('tr')[1:]:
             tds = tr.find_all('td')
+            if len(tds) == 0:
+                continue
             if "当前上传" == tds[0].text.strip():
                 # seeding size 获取不到的话，此处再获取一次
                 if tds[1].table and self.seeding_size == 0:

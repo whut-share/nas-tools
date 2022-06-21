@@ -5,9 +5,9 @@ from utils.functions import num_filesize
 from lxml import etree
 
 
-class OtherSiteUserInfo(ISiteUserInfo):
+class IptSiteUserInfo(ISiteUserInfo):
 
-    _site_schema = "other"
+    _site_schema = "IPTorrents"
     _brief_page = "/"
     _user_traffic_page = None
     _user_detail_page = None
@@ -29,13 +29,17 @@ class OtherSiteUserInfo(ISiteUserInfo):
             self.bonus = float(tmps[0].xpath('a')[3].xpath('text()')[0])
 
     def _parse_site_page(self, html_text):
+        # TODO
         pass
 
     def _parse_user_detail_info(self, html_text):
+        # TODO
         pass
 
     def _parse_user_torrent_seeding_info(self, html_text):
+        # TODO
         pass
 
     def _parse_user_traffic_info(self, html_text):
+        # TODO
         pass

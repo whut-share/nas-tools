@@ -1,6 +1,6 @@
 from pt.siteuserinfo.nexus_php import NexusPhpSiteUserInfo
 from pt.siteuserinfo.nexus_project import NexusProjectSiteUserInfo
-from pt.siteuserinfo.other_project import OtherSiteUserInfo
+from pt.siteuserinfo.ipt_project import IptSiteUserInfo
 from pt.siteuserinfo.small_horse import SmallHorseSiteUserInfo
 from utils.http_utils import RequestUtils,requests
 import log
@@ -36,8 +36,11 @@ class SiteUserInfoFactory(object):
 
             if "Small Horse" in html_text:
                 return SmallHorseSiteUserInfo(url, user_agent, site_cookie, html_text)
-            # 默认其它
-            return OtherSiteUserInfo(url, user_agent, site_cookie, html_text)
+
+            if "IPTorrents" in html_text:
+                return IptSiteUserInfo(url, user_agent, site_cookie, html_text)
+            # 默认NexusPhp
+            return NexusPhpSiteUserInfo(url, user_agent, site_cookie, html_text)
         elif not res:
             log.error("【PT】站点 %s 连接失败：%s" % (site_name, url))
             return None
