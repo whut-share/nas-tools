@@ -14,6 +14,7 @@ from utils.http_utils import RequestUtils
 from utils.meta_helper import MetaHelper
 from utils.types import MediaType, MatchMode
 from utils.commons import EpisodeFormat
+from utils.cache_manager import cacheman
 
 
 class Media:
@@ -553,6 +554,14 @@ class Media:
                         file_media_info = self.__search_multi_tmdb(file_media_name=meta_info.get_name())
             if not file_media_info:
                 file_media_info = self.search_tmdb_web(file_media_name=meta_info.get_name(), year=meta_info.year)
+            if not file_media_info:
+                cache_name = cacheman["tmdb_supply"].get(meta_info.get_name())
+                if not cache_name:
+                    cache_name = self.search_bing(meta_info.get_name())
+                    cacheman["tmdb_supply"].set(meta_info.get_name(), cache_name)
+                if cache_name:
+                    log.info("【META】开始辅助查询：%s ..." % cache_name)
+                    file_media_info = self.search_tmdb_web(file_media_name=cache_name, year=meta_info.year)
             # 加入缓存
             if file_media_info:
                 self.meta.update_meta_data({media_key: file_media_info})
@@ -638,6 +647,15 @@ class Media:
                         if not file_media_info:
                             # 从网站查询
                             file_media_info = self.search_tmdb_web(file_media_name=meta_info.get_name(), year=meta_info.year)
+
+                        if not file_media_info:
+                            cache_name = cacheman["tmdb_supply"].get(meta_info.get_name())
+                            if not cache_name:
+                                cache_name = self.search_bing(meta_info.get_name())
+                                cacheman["tmdb_supply"].set(meta_info.get_name(), cache_name)
+                            if cache_name:
+                                log.info("【META】开始辅助查询：%s ..." % cache_name)
+                                file_media_info = self.search_tmdb_web(file_media_name=cache_name, year=meta_info.year)
 
                         if file_media_info:
                             self.meta.update_meta_data({media_key: file_media_info})
@@ -855,3 +873,44 @@ class Media:
         except Exception as e:
             log.console(str(e))
             return {}
+
+
+    def search_bing(self, feature_name):
+
+        if not feature_name:
+            return None
+        weights1 = [3, 2, 0.5, 0.5]
+        weights2 = [2, 1]
+        weights3 = [1]
+        bing_url = "https://www.bing.com/search?q=%s" % feature_name
+        res = RequestUtils(headers=DEFAULT_HEADERS, cookies=None).get_res(url=bing_url)
+        if res and res.status_code == 200:
+            html_text = res.text
+            if not html_text:
+                return None
+            html = etree.HTML(html_text)
+            strongs = html.xpath("//strong/text()")
+            if not strongs:
+                return None
+            ret_dict = {}
+            for i, s in enumerate(strongs):
+                if len(strongs) < 5:
+                    score = weights3[0]
+                elif len(strongs) < 10:
+                    score = weights2[0] if i < (len(strongs) >> 1) else weights2[1]
+                else:
+                    score = weights1[0] if i < (len(strongs) >> 2) else weights1[1] if i < (len(strongs) >> 1) \
+                        else weights1[2] if i < (len(strongs) >> 2 + len(strongs) >> 1) else weights1[3]
+                if ret_dict.__contains__(s):
+                    ret_dict[s] += score
+                    continue
+                ret_dict[s] = score
+            ret = sorted(ret_dict.items(), key=lambda d: d[1], reverse=True)
+            if len(ret) == 1:
+                return ret[0][1]
+            else:
+                pre = ret[0]
+                next = ret[1]
+                if pre.find(next) > -1:
+                    return next[1]
+                return pre[1]
