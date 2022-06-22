@@ -44,6 +44,9 @@ def search_medias_for_web(content, ident_flag=True, filters=None):
     else:
         log.info("【WEB】共检索到 %s 个有效资源" % len(media_list))
         # 插入数据库
+        media_list = sorted(media_list, key=lambda x: "%s%s%s" % (str(x.res_order).rjust(3, '0'),
+                                                                  str(x.site_order).rjust(3, '0'),
+                                                                  str(x.seeders).rjust(10, '0')), reverse=True)
         insert_search_results(media_list)
 
 
@@ -82,7 +85,7 @@ def search_media_by_message(input_str, in_from: SearchType, user_id=None):
                                        title="无法识别搜索内容！",
                                        user_id=user_id)
             return
-        tmdb_infos = Media().search_tmdb_infos(title=media_info.get_name(), year=media_info.year, mtype=mtype)
+        tmdb_infos = Media().get_tmdb_infos(title=media_info.get_name(), year=media_info.year, mtype=mtype)
         if not tmdb_infos:
             # 查询不到媒体信息
             Message().send_channel_msg(channel=in_from,
