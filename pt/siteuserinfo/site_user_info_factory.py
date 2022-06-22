@@ -1,7 +1,8 @@
-from pt.siteuserinfo.nexus_php import NexusPhpSiteUserInfo
+from pt.siteuserinfo.nexus_php import NexusPhpSiteUserInfo,etree
 from pt.siteuserinfo.nexus_project import NexusProjectSiteUserInfo
 from pt.siteuserinfo.ipt_project import IptSiteUserInfo
 from pt.siteuserinfo.small_horse import SmallHorseSiteUserInfo
+from pt.siteuserinfo.u2_php import U2SiteUserInfo
 from utils.http_utils import RequestUtils,requests
 import log
 
@@ -29,6 +30,8 @@ class SiteUserInfoFactory(object):
                     log.error("【PT】站点 %s 被反爬限制：%s, 状态码：%s" % (site_name, url, res.status_code))
                     return None
             if "NexusPHP" in html_text in html_text:
+                if etree.HTML(html_text).xpath("//title/text()")[0].find("U2") >= 0:
+                    return U2SiteUserInfo(url, user_agent, site_cookie, html_text)
                 return NexusPhpSiteUserInfo(url, user_agent, site_cookie, html_text)
 
             if "Nexus Project" in html_text:

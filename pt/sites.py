@@ -68,6 +68,8 @@ class Sites:
         if not site_info:
             return
         site_name = site_info[1]
+        if site_name == "u2":
+            return
         site_url = site_info[4]
         if not site_url and site_info[3]:
             site_url = site_info[3]

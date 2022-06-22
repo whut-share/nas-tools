@@ -91,6 +91,8 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
         self.seeding_size = 0
         for tr in soup.find_all('tr')[1:]:
             tds = tr.find_all('td')
+            if len(tds) < 3:
+                continue
             self.seeding_size += num_filesize(tds[2].text.strip())
 
     def _parse_user_detail_info(self, html_text):
