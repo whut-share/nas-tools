@@ -569,6 +569,7 @@ class Media:
             if not file_media_info:
                 file_media_info = self.__search_tmdb_web(file_media_name=meta_info.get_name())
             if not file_media_info:
+                log.info("【META】无法搜索到相关资源：%s " % meta_info.get_name())
                 cache_name = cacheman["tmdb_supply"].get(meta_info.get_name())
                 if not cache_name:
                     cache_name = self.__search_bing(meta_info.get_name())
@@ -663,6 +664,7 @@ class Media:
                             # 从网站查询
                             file_media_info = self.__search_tmdb_web(file_media_name=meta_info.get_name())
                         if not file_media_info:
+                            log.info("【META】无法搜索到相关资源：%s " % meta_info.get_name())
                             cache_name = cacheman["tmdb_supply"].get(meta_info.get_name())
                             if not cache_name:
                                 cache_name = self.__search_bing(meta_info.get_name())
@@ -910,11 +912,15 @@ class Media:
                     continue
                 ret_dict[s] = score
             ret = sorted(ret_dict.items(), key=lambda d: d[1], reverse=True)
+            log.info("【META】推断关键字为：%s ..." % ([k[0] for k in ret]))
             if len(ret) == 1:
-                return ret[0][0]
+                keyword = ret[0][0]
             else:
                 pre = ret[0]
                 next = ret[1]
                 if pre[0].find(next[0]) > -1:
-                    return next[0]
-                return pre[0]
+                    keyword =  next[0]
+                else:
+                    keyword =  pre[0]
+            log.info("【META】选择关键字为：%s " % keyword)
+            return keyword
