@@ -28,6 +28,7 @@ from service.scheduler import Scheduler
 from service.sync import Sync
 from utils.commons import EpisodeFormat
 from utils.functions import *
+from utils.http_utils import RequestUtils
 from utils.meta_helper import MetaHelper
 from utils.sqls import *
 from utils.types import MediaType, SearchType, DownloaderType, SyncType
@@ -270,8 +271,10 @@ class WebAction:
         ident_flag = False if data.get("unident") else True
         filters = data.get("filters")
         if search_word:
-            search_medias_for_web(content=search_word, ident_flag=ident_flag, filters=filters)
-        return {"retcode": 0}
+            ret, ret_msg = search_medias_for_web(content=search_word, ident_flag=ident_flag, filters=filters)
+            if ret != 0:
+                return {"code": ret, "msg": ret_msg}
+        return {"code": 0}
 
     @staticmethod
     def __download(data):
@@ -287,22 +290,28 @@ class WebAction:
                 mtype = MediaType.MOVIE
             else:
                 mtype = MediaType.ANIME
-            ret = Downloader().add_pt_torrent(res[0], mtype)
-            if ret:
-                msg_item = MetaInfo("%s" % res[8])
+            msg_item = MetaInfo("%s" % res[8])
+            msg_item.type = mtype
+            msg_item.size = res[10]
+            msg_item.enclosure = res[0]
+            msg_item.site = res[14]
+            msg_item.upload_volume_factor = float(res[15] or 1.0)
+            msg_item.download_volume_factor = float(res[16] or 1.0)
+            if res[11] and str(res[11]) != "0":
+                msg_item.tmdb_id = res[11]
                 msg_item.title = res[1]
                 msg_item.vote_average = res[5]
                 msg_item.poster_path = res[6]
-                msg_item.type = mtype
                 msg_item.description = res[9]
-                msg_item.size = res[10]
-                msg_item.tmdb_id = res[11]
                 msg_item.poster_path = res[12]
                 msg_item.overview = res[13]
-                msg_item.enclosure = res[0]
-                msg_item.site = res[14]
-                msg_item.upload_volume_factor = float(res[15] or 1.0)
-                msg_item.download_volume_factor = float(res[16] or 1.0)
+            else:
+                tmdbinfo = Media().get_tmdb_info(mtype=mtype, title=msg_item.get_name(), year=msg_item.year)
+                msg_item.set_tmdb_info(tmdbinfo)
+            # 添加下载
+            ret = Downloader().add_pt_torrent(res[0], mtype)
+            if ret:
+                # 发送消息
                 Message().send_download_message(SearchType.WEB, msg_item)
             else:
                 return {"retcode": -1}
