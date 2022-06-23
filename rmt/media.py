@@ -572,7 +572,7 @@ class Media:
                     cacheman["tmdb_supply"].set(meta_info.get_name(), cache_name)
                 if cache_name:
                     log.info("【META】开始辅助查询：%s ..." % cache_name)
-                    file_media_info = self.__search_tmdb_web(file_media_name=cache_name, year=meta_info.year)
+                    file_media_info = self.__search_multi_tmdb(file_media_name=cache_name)
 
             # 加入缓存
             if file_media_info:
@@ -666,7 +666,7 @@ class Media:
                                 cacheman["tmdb_supply"].set(meta_info.get_name(), cache_name)
                             if cache_name:
                                 log.info("【META】开始辅助查询：%s ..." % cache_name)
-                                file_media_info = self.__search_tmdb_web(file_media_name=cache_name, year=meta_info.year)
+                                file_media_info = self.__search_multi_tmdb(file_media_name=cache_name)
                         if file_media_info:
                             self.meta.update_meta_data({media_key: file_media_info})
                         else:
@@ -908,10 +908,10 @@ class Media:
                 ret_dict[s] = score
             ret = sorted(ret_dict.items(), key=lambda d: d[1], reverse=True)
             if len(ret) == 1:
-                return ret[0][1]
+                return ret[0][0]
             else:
                 pre = ret[0]
                 next = ret[1]
-                if pre.find(next) > -1:
-                    return next[1]
-                return pre[1]
+                if pre[0].find(next[0]) > -1:
+                    return next[0]
+                return pre[0]
