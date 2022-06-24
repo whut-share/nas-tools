@@ -233,9 +233,6 @@ class Sync(object):
                         ext = os.path.splitext(name)[-1]
                         if ext.lower() not in RMT_MEDIAEXT:
                             return
-                    # 黑名单不处理
-                    if is_transfer_in_blacklist(from_dir):
-                        return
                     # 监控根目录下的文件发生变化时直接发走
                     if is_root_path:
                         ret, ret_msg = self.filetransfer.transfer_media(in_from=SyncType.MON,
@@ -415,8 +412,6 @@ class Sync(object):
             else:
                 for path in get_dir_level1_medias(monpath, RMT_MEDIAEXT):
                     if is_invalid_path(path):
-                        continue
-                    if is_transfer_in_blacklist(path):
                         continue
                     ret, ret_msg = self.filetransfer.transfer_media(in_from=SyncType.MON,
                                                                     in_path=path,

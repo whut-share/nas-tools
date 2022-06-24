@@ -1,4 +1,4 @@
-FROM jxxghp/nas-tools-base-image
+FROM alpine
 ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     NASTOOL_CONFIG="/config/config.yaml" \
@@ -11,7 +11,21 @@ ENV LANG="C.UTF-8" \
     WORKDIR="/nas-tools"
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 WORKDIR ${WORKDIR}
-RUN python_ver=$(python3 -V | awk '{print $2}') \
+RUN apk add --no-cache \
+       git \
+       gcc \
+       musl-dev \
+       python3-dev \
+       py3-pip \
+       libxml2-dev \
+       libxslt-dev \
+       tzdata \
+       su-exec \
+       nginx \
+    && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
+    && echo "${TZ}" > /etc/timezone \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "${WORKDIR}/" > /usr/lib/python${python_ver%.*}/site-packages/nas-tools.pth \
     && echo 'fs.inotify.max_user_watches=524288' >> /etc/sysctl.conf \
     && echo 'fs.inotify.max_user_instances=524288' >> /etc/sysctl.conf \
@@ -20,6 +34,14 @@ RUN python_ver=$(python3 -V | awk '{print $2}') \
     && git config --global http.postBuffer 524288000 \
     && git clone -b master ${REPO_URL} --depth=1 ${WORKDIR} \
     && git config --global --add safe.directory ${WORKDIR} \
-    && mkdir -p /var/log/supervisor
+    && pip install --upgrade pip setuptools wheel \
+    && pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt \
+    && mkdir -p /var/log/supervisor \
+    && mkdir -p /etc/nginx/http.d \
+    && cp ${WORKDIR}/docker/nas_tools.conf /etc/nginx/http.d \
+    && rm -rf \
+       /tmp/* \
+       /root/.cache \
+       /var/cache/apk/*
 VOLUME ["/config"]
 ENTRYPOINT ["/nas-tools/docker/entrypoint.sh"]

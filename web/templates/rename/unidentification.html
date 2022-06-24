@@ -229,15 +229,12 @@
                 <div class="col-4">
                   <input type="text" id="rename_episode" class="form-control" placeholder="{ep}.mp4">
                 </div>
-                <div class="col-2">
+                <div class="col-4">
                   <input type="text" id="rename_episode_details" class="form-control"
                     placeholder="start_ep[, end_ep] 可选">
                 </div>
-                <div class="col-2">
-                  <input type="text" id="rename_episode_offset" class="form-control" placeholder="offset, 可选">
-                </div>
                 <div class="col-4">
-                  <input type="text" id="rename_subtitle_format" class="form-control" placeholder="{ep}.ass, 可选">
+                  <input type="text" id="rename_episode_offset" class="form-control" placeholder="offset, 可选">
                 </div>
               </div>
             </div>
@@ -338,7 +335,6 @@
     var episode_format = $("#rename_episode").val();
     var episode_details = $("#rename_episode_details").val();
     var episode_offset = $("#rename_episode_offset").val();
-    var subtitle_format = $("#rename_subtitle_format").val();
     var min_filesize = $("#rename_min_filesize").val();
 
     if (inpath === "") {
@@ -387,7 +383,7 @@
     var data = {
       "inpath": inpath, "outpath": outpath, "type": type, "tmdb": tmdb
       , "season": season, "episode_format": episode_format, "episode_details": episode_details
-      , "episode_offset": episode_offset, "subtitle_format": subtitle_format, "min_filesize": min_filesize
+      , "episode_offset": episode_offset, "min_filesize": min_filesize
     };
     $("#rename_udf_btn").attr("disabled", true);
     $("#rename_udf_btn").text("处理中...");
@@ -424,7 +420,6 @@
     $('#rename_udf_btn').hide();
     $('#rename_episode_details').hide();
     $('#rename_episode_offset').hide();
-    $('#rename_subtitle_format').hide();
     $("#rename_season").empty();
     $("#rename_season").append('<option value="" selected>请选择</option>');
     for (var i = 0; i <= 50; i++) {
@@ -461,7 +456,6 @@
     }
     $("#rename_episode_details").show();
     $("#rename_episode_offset").show();
-    $("#rename_subtitle_format").show();
     type = $('input:radio[name=rename_type]:checked').val();
     if (type == "MOV") {
       $("#rename_season_div").hide();
