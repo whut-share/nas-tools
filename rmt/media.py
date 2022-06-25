@@ -16,11 +16,7 @@ from utils.types import MediaType, MatchMode
 from utils.commons import EpisodeFormat
 from utils.cache_manager import cacheman
 import difflib
-
-SEARCH_WEIGHT_1 = [10, 3, 2, 0.5, 0.5]
-SEARCH_WEIGHT_2 = [10, 2, 1]
-SEARCH_WEIGHT_3 = [10, 2]
-STR_SIMILARITY_THRESHOLD = 0.4
+from rmt.constants import *
 
 class Media:
     # TheMovieDB
@@ -906,26 +902,32 @@ class Media:
         is_movie = False
         if not feature_name:
             return None, is_movie
+        # 剔除不必要字符
+        backlist = sorted(KEYWORD_BLACKLIST, key=lambda x: len(x), reverse=True)
+        for single in backlist:
+            feature_name = feature_name.replace(single, " ")
 
         def cal_score(strongs, ret_dict):
             for i, s in enumerate(strongs):
                 if len(strongs) < 5:
                     if i < 2:
-                        score = SEARCH_WEIGHT_3[0]
+                        score = KEYWORD_SEARCH_WEIGHT_3[0]
                     else:
-                        score = SEARCH_WEIGHT_3[1]
+                        score = KEYWORD_SEARCH_WEIGHT_3[1]
                 elif len(strongs) < 10:
                     if i < 2:
-                        score = SEARCH_WEIGHT_2[0]
+                        score = KEYWORD_SEARCH_WEIGHT_2[0]
                     else:
-                        score = SEARCH_WEIGHT_2[1] if i < (len(strongs) >> 1) else SEARCH_WEIGHT_2[2]
+                        score = KEYWORD_SEARCH_WEIGHT_2[1] if i < (len(strongs) >> 1) else KEYWORD_SEARCH_WEIGHT_2[2]
                 else:
                     if i < 2:
-                        score = SEARCH_WEIGHT_1[0]
+                        score = KEYWORD_SEARCH_WEIGHT_1[0]
                     else:
-                        score = SEARCH_WEIGHT_1[1] if i < (len(strongs) >> 2) else SEARCH_WEIGHT_1[2] if i < (
+                        score = KEYWORD_SEARCH_WEIGHT_1[1] if i < (len(strongs) >> 2) else KEYWORD_SEARCH_WEIGHT_1[
+                            2] if i < (
                                 len(strongs) >> 1) \
-                            else SEARCH_WEIGHT_1[3] if i < (len(strongs) >> 2 + len(strongs) >> 1) else SEARCH_WEIGHT_1[
+                            else KEYWORD_SEARCH_WEIGHT_1[3] if i < (len(strongs) >> 2 + len(strongs) >> 1) else \
+                        KEYWORD_SEARCH_WEIGHT_1[
                             4]
                 if ret_dict.__contains__(s.lower()):
                     ret_dict[s.lower()] += score
@@ -933,7 +935,7 @@ class Media:
                 ret_dict[s.lower()] = score
 
         bing_url = "https://www.cn.bing.com/search?q=%s&qs=n&form=QBRE&sp=-1" % feature_name
-        baidu_url = "https://www.baidu.com/s?wd=%s" % feature_name
+        baidu_url = "https://www.baidu.com/s?ie=utf-8&tn=baiduhome_pg&wd=%s" % feature_name
         res_bing = RequestUtils().get_res(url=bing_url)
         res_baidu = RequestUtils().get_res(url=baidu_url)
         ret_dict = {}
@@ -942,15 +944,18 @@ class Media:
             if html_text:
                 html = etree.HTML(html_text)
                 strongs_bing = list(
-                    filter(lambda x: difflib.SequenceMatcher(None, feature_name, x).ratio() > STR_SIMILARITY_THRESHOLD,
+                    filter(lambda x: (0 if not x else difflib.SequenceMatcher(None, feature_name,
+                                                                              x).ratio()) > KEYWORD_STR_SIMILARITY_THRESHOLD,
                            map(lambda x: x.text, html.cssselect(
                                "#sp_requery strong, #sp_recourse strong, #tile_link_cn strong, .b_ad .ad_esltitle~div strong, h2 strong, .b_caption p strong, .b_snippetBigText strong, .recommendationsTableTitle+.b_slideexp strong, .recommendationsTableTitle+table strong, .recommendationsTableTitle+ul strong, .pageRecoContainer .b_module_expansion_control strong, .pageRecoContainer .b_title>strong, .b_rs strong, .b_rrsr strong, #dict_ans strong, .b_listnav>.b_ans_stamp>strong, #b_content #ans_nws .na_cnt strong, .adltwrnmsg strong"))))
                 if strongs_bing:
-                    doubans = html.xpath("//aside//a[contains(@href, \"movie.douban.com\")]")
-                    if len(doubans) > 0:
-                        title = html.xpath("//aside//h2[@class = \" b_entityTitle\"]/text()")
+                    # doubans = html.xpath("//aside//a[contains(@href, \"movie.douban.com\")]")
+                    # if len(doubans) > 0:
+                    title = html.xpath("//aside//h2[@class = \" b_entityTitle\"]/text()")
+                    if len(title) > 0:
                         if title:
-                            ret_dict[title[0]] = 100
+                            t = re.compile(r"\s*\(\d{4}\)$").sub("", title[0])
+                            ret_dict[t] = 200
                             if html.xpath("//aside//div[@data-feedbk-ids = \"Movie\"]"):
                                 is_movie = True
                     cal_score(strongs_bing, ret_dict)
@@ -959,7 +964,8 @@ class Media:
             if html_text:
                 html = etree.HTML(html_text)
                 ems = list(
-                    filter(lambda x: difflib.SequenceMatcher(None, feature_name, x).ratio() > STR_SIMILARITY_THRESHOLD,
+                    filter(lambda x: (0 if not x else difflib.SequenceMatcher(None, feature_name,
+                                                                              x).ratio()) > KEYWORD_STR_SIMILARITY_THRESHOLD,
                            map(lambda x: x.text, html.cssselect("em"))))
                 if len(ems) > 0:
                     cal_score(ems, ret_dict)
@@ -973,7 +979,18 @@ class Media:
             pre = ret[0]
             next = ret[1]
             if next[0].find(pre[0]) > -1:
-                keyword = next[0]
+                # 满分直接判定
+                if int(pre[1]) >= 100:
+                    keyword = pre[0]
+                # 得分相差30 以上， 选分高
+                elif int(pre[1]) - int(next[1]) > KEYWORD_DIFF_SCORE_THRESHOLD:
+                    keyword = pre[0]
+                # 重复的不选
+                elif next[0].replace(pre[0], "").strip() == pre[0]:
+                    keyword = pre[0]
+                else:
+                    keyword = next[0]
+
             else:
                 keyword = pre[0]
         log.info("【META】选择关键字为：%s " % keyword)
