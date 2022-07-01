@@ -271,8 +271,19 @@ class WebAction:
         search_word = data.get("search_word")
         ident_flag = False if data.get("unident") else True
         filters = data.get("filters")
+        tmdbid = data.get("tmdbid")
+        media_type = data.get("media_type")
+        if media_type:
+            if media_type == "电影":
+                media_type = MediaType.MOVIE
+            else:
+                media_type = MediaType.TV
         if search_word:
-            ret, ret_msg = search_medias_for_web(content=search_word, ident_flag=ident_flag, filters=filters)
+            ret, ret_msg = search_medias_for_web(content=search_word,
+                                                 ident_flag=ident_flag,
+                                                 filters=filters,
+                                                 tmdbid=tmdbid,
+                                                 media_type=media_type)
             if ret != 0:
                 return {"code": ret, "msg": ret_msg}
         return {"code": 0}
@@ -634,15 +645,19 @@ class WebAction:
         """
         tid = data.get("id")
         site_free = False
+        site_2xfree = False
         if tid:
             ret = get_site_by_id(tid)
             if ret[0][3]:
                 url_host = parse.urlparse(ret[0][3]).netloc
                 if url_host in GRAP_FREE_SITES.keys():
-                    site_free = True
+                    if GRAP_FREE_SITES[url_host].get("FREE"):
+                        site_free = True
+                    if GRAP_FREE_SITES[url_host].get("2XFREE"):
+                        site_2xfree = True
         else:
             ret = []
-        return {"code": 0, "site": ret, "site_free": site_free}
+        return {"code": 0, "site": ret, "site_free": site_free, "site_2xfree": site_2xfree}
 
     @staticmethod
     def __del_site(data):

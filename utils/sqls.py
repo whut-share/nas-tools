@@ -852,7 +852,7 @@ def get_site_user_statistics(num=100, strict_urls=None):
               " UPLOAD, DOWNLOAD, RATIO," \
               " SEEDING, LEECHING, SEEDING_SIZE," \
               " BONUS, URL" \
-              " FROM SITE_USER_STATISTICS WHERE URL in {} LIMIT ?".format(tuple(strict_urls))
+              " FROM SITE_USER_STATISTICS WHERE URL in {} LIMIT ?".format(tuple(strict_urls + ["__DUMMY__"]))
 
     return select_by_sql(sql, (num,))
 
