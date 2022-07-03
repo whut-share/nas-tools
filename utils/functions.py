@@ -16,9 +16,9 @@ from utils.types import OsType
 INSTANCES = {}
 lock = threading.RLock()
 
+
 # 单例模式注解
 def singleton(cls):
-    # 单下划线的作用是这个变量只能在当前模块里访问,仅仅是一种提示作用
     # 创建字典用来保存类的实例对象
     global INSTANCES
 
@@ -27,7 +27,7 @@ def singleton(cls):
         if cls not in INSTANCES:
             with lock:
                 if cls not in INSTANCES:
-                    INSTANCES[cls] = cls(*args, **kwargs)  # 创建一个对象,并保存到字典当中
+                    INSTANCES[cls] = cls(*args, **kwargs)
                     pass
         # 将实例对象返回
         return INSTANCES[cls]

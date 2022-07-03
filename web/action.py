@@ -1,4 +1,3 @@
-import _thread
 import importlib
 import signal
 from urllib import parse
@@ -33,6 +32,7 @@ from utils.functions import *
 from utils.http_utils import RequestUtils
 from utils.meta_helper import MetaHelper
 from utils.sqls import *
+from utils.thread_helper import ThreadHelper
 from utils.types import MediaType, SearchType, DownloaderType, SyncType
 from web.backend.search_torrents import search_medias_for_web, search_media_by_message
 from web.backend.subscribe import add_rss_subscribe, add_rss_substribe_from_string
@@ -81,7 +81,8 @@ class WebAction:
             "delete_tmdb_cache": self.__delete_tmdb_cache,
             "movie_calendar_data": self.__movie_calendar_data,
             "tv_calendar_data": self.__tv_calendar_data,
-            "modify_tmdb_cache": self.__modify_tmdb_cache
+            "modify_tmdb_cache": self.__modify_tmdb_cache,
+            "rss_detail": self.__rss_detail
         }
 
     def action(self, cmd, data):
@@ -134,14 +135,14 @@ class WebAction:
                     Message().send_channel_msg(channel=in_from, title="错误：只有管理员才有权限执行此命令")
                     return
             # 启动服务
-            _thread.start_new_thread(command.get("func"), ())
+            ThreadHelper().start_thread(command.get("func"), ())
             Message().send_channel_msg(channel=in_from, title="%s 已启动" % command.get("desp"))
         elif msg.startswith("订阅"):
             # 添加订阅
-            _thread.start_new_thread(add_rss_substribe_from_string, (msg, in_from, user_id,))
+            ThreadHelper().start_thread(add_rss_substribe_from_string, (msg, in_from, user_id,))
         else:
             # PT检索
-            _thread.start_new_thread(search_media_by_message, (msg, in_from, user_id,))
+            ThreadHelper().start_thread(search_media_by_message, (msg, in_from, user_id,))
 
     @staticmethod
     def set_config_value(cfg, cfg_key, cfg_value):
@@ -261,7 +262,7 @@ class WebAction:
         }
         sch_item = data.get("item")
         if sch_item and commands.get(sch_item):
-            _thread.start_new_thread(commands.get(sch_item), ())
+            ThreadHelper().start_thread(commands.get(sch_item), ())
         return {"retmsg": "服务已启动", "item": sch_item}
 
     @staticmethod
@@ -868,6 +869,7 @@ class WebAction:
         rss_restype = data.get("rss_restype")
         rss_pix = data.get("rss_pix")
         rss_keyword = data.get("rss_keyword")
+        rssid = data.get("rssid")
         if name and mtype:
             if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'MOV']:
                 mtype = MediaType.MOVIE
@@ -885,7 +887,8 @@ class WebAction:
                                                   over_edition=over_edition,
                                                   rss_restype=rss_restype,
                                                   rss_pix=rss_pix,
-                                                  rss_keyword=rss_keyword)
+                                                  rss_keyword=rss_keyword,
+                                                  rssid=rssid)
         return {"code": code, "msg": msg, "page": page, "name": name}
 
     @staticmethod
@@ -951,7 +954,8 @@ class WebAction:
                 if not tmdb_info:
                     return {"code": 1, "retmsg": "无法查询到TMDB信息", "link_url": link_url}
                 overview = tmdb_info.get("overview")
-                poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path')
+                poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path') if tmdb_info.get(
+                    'poster_path') else ""
                 title = tmdb_info.get('title')
                 vote_average = tmdb_info.get("vote_average")
                 release_date = tmdb_info.get('release_date')
@@ -997,7 +1001,8 @@ class WebAction:
                 if not tmdb_info:
                     return {"code": 1, "retmsg": "无法查询到TMDB信息", "link_url": link_url}
                 overview = tmdb_info.get("overview")
-                poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path')
+                poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path') if tmdb_info.get(
+                    'poster_path') else ""
                 title = tmdb_info.get('name')
                 vote_average = tmdb_info.get("vote_average")
                 release_date = tmdb_info.get('first_air_date')
@@ -1080,9 +1085,9 @@ class WebAction:
         rssid = data.get("rssid")
         page = data.get("page")
         if mtype == "MOV":
-            _thread.start_new_thread(Rss().rsssearch_movie, (rssid,))
+            ThreadHelper().start_thread(Rss().rsssearch_movie, (rssid,))
         else:
-            _thread.start_new_thread(Rss().rsssearch_tv, (rssid,))
+            ThreadHelper().start_thread(Rss().rsssearch_tv, (rssid,))
         return {"code": 0, "page": page}
 
     @staticmethod
@@ -1231,6 +1236,40 @@ class WebAction:
             return {"code": 0, "events": episode_events}
 
     @staticmethod
+    def __rss_detail(data):
+        rssid = data.get("rssid")
+        rsstype = data.get("rsstype")
+        if rsstype == "MOV":
+            rss = get_rss_movies(rssid=rssid)
+            if not rss:
+                return {"code": 1}
+            r_sites, s_sites, over_edition, filter_map = Torrent.get_rss_note_item(rss[0][4])
+            rssdetail = {"rssid": rssid,
+                         "name": rss[0][0],
+                         "year": rss[0][1],
+                         "tmdbid": rss[0][2],
+                         "r_sites": r_sites,
+                         "s_sites": s_sites,
+                         "over_edition": over_edition,
+                         "filter": filter_map}
+        else:
+            rss = get_rss_tvs(rssid=rssid)
+            if not rss:
+                return {"code": 1}
+            r_sites, s_sites, over_edition, filter_map = Torrent.get_rss_note_item(rss[0][5])
+            rssdetail = {"rssid": rssid,
+                         "name": rss[0][0],
+                         "year": rss[0][1],
+                         "season": rss[0][2],
+                         "tmdbid": rss[0][3],
+                         "r_sites": r_sites,
+                         "s_sites": s_sites,
+                         "over_edition": over_edition,
+                         "filter": filter_map}
+
+        return {"code": 0, "detail": rssdetail}
+
+    @staticmethod
     def __modify_tmdb_cache(data):
         """
         修改TMDB缓存的标题
@@ -1261,6 +1300,7 @@ class WebAction:
         filter_htmls = []
         if over_edition:
             filter_htmls.append('<span class="badge badge-outline text-red me-1 mb-1" title="已开启洗版">洗版</span>')
-        filter_htmls += ['<span class="badge badge-outline text-orange me-1 mb-1">%s</span>' % v for v in filter_map.values() if v]
+        filter_htmls += ['<span class="badge badge-outline text-orange me-1 mb-1">%s</span>' % v for v in
+                         filter_map.values() if v]
 
         return "".join(filter_htmls)
