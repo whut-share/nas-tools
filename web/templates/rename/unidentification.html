@@ -242,14 +242,14 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" id="rename_btn" class="btn btn-primary">转移</button>
+        <button type="button" id="rename_btn" class="btn btn-primary">识别</button>
         <button type="button" id="rename_udf_btn" class="btn btn-primary" style="display: none">识别</button>
       </div>
     </div>
   </div>
 </div>
 <script type="text/javascript">
-  //手动转移
+  //手动识别
   function manual_rename() {
     var unknown_id = $('#unknown_id').val();
     var type = $('input:radio[name=rename_type]:checked').val();
@@ -311,7 +311,7 @@
     $("#rename_retmsg").hide()
     ajax_post("rename", data, function (ret) {
       $("#rename_btn").attr("disabled", false);
-      $("#rename_btn").text("转移");
+      $("#rename_btn").text("识别");
       if (ret.retcode == 0) {
         //处理成功
         $('#modal-rename').modal('hide');
@@ -378,7 +378,6 @@
       }
     }
 
-
     // 开始处理
     var data = {
       "inpath": inpath, "outpath": outpath, "type": type, "tmdb": tmdb
@@ -392,9 +391,8 @@
       $("#rename_udf_btn").attr("disabled", false);
       $("#rename_udf_btn").text("识别");
       if (ret.retcode == 0) {
-        //处理成功, 关闭刷新比较好
-        {#$('#modal-rename').modal('hide');#}
-        {#navmenu('unidentification');#}
+        $('#modal-rename').modal('hide');
+        show_success_modal("处理成功！");
       } else {
         //处理失败
         regmsg = ret.retmsg;
@@ -482,7 +480,7 @@
     });
   }
 
-  //转移按钮
+  //识别按钮
   $("#rename_btn").click(function () {
     manual_rename();
   });

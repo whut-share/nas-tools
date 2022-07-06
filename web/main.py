@@ -483,7 +483,7 @@ def create_flask_app(config):
                 tmdbinfos = Media().get_tmdb_infos(title=meta_info.get_name(), year=meta_info.year, num=20)
                 for tmdbinfo in tmdbinfos:
                     tmp_info = MetaInfo(title=SearchWord)
-                    tmp_info.set_tmdb_info(tmdbinfo, fanart=False)
+                    tmp_info.set_tmdb_info(tmdbinfo)
                     tmp_info.poster_path = "https://image.tmdb.org/t/p/w500%s" % tmp_info.poster_path
                     medias.append(tmp_info)
         return render_template("medialist.html",
@@ -699,7 +699,7 @@ def create_flask_app(config):
             if not name:
                 continue
             # 识别
-            media_info = Media().get_media_info(title=name, fanart=False)
+            media_info = Media().get_media_info(title=name)
             if not media_info:
                 continue
             if not media_info.tmdb_info:
@@ -710,7 +710,7 @@ def create_flask_app(config):
                     title = "%s %s" % (media_info.get_name(), media_info.get_season_episode_string())
             else:
                 title = "%s %s" % (media_info.get_title_string(), media_info.get_season_episode_string())
-            poster_path = media_info.poster_path
+            poster_path = media_info.get_poster_image()
             torrent_info = {'id': key, 'title': title, 'speed': speed, 'image': poster_path or "", 'state': state,
                             'progress': progress}
             if torrent_info not in DispTorrents:
@@ -746,6 +746,7 @@ def create_flask_app(config):
         SiteUploads = []
         SiteDownloads = []
         SiteRatios = []
+        SiteErrs = {}
         # 刷新指定站点
         Sites().refresh_pt(specify_sites=refresh_site)
         # 站点上传下载
@@ -754,11 +755,15 @@ def create_flask_app(config):
             for name, data in SiteData.items():
                 if not data:
                     continue
-                up = data.get("upload") or 0
-                dl = data.get("download") or 0
-                ratio = data.get("ratio") or 0
-                seeding = data.get("seeding") or 0
-                seeding_size = data.get("seeding_size") or 0
+                up = data.get("upload", 0)
+                dl = data.get("download", 0)
+                ratio = data.get("ratio", 0)
+                seeding = data.get("seeding", 0)
+                seeding_size = data.get("seeding_size", 0)
+                err_msg = data.get("err_msg", "")
+
+                SiteErrs.update({name: err_msg})
+
                 if not up and not dl and not ratio:
                     continue
                 if not str(up).isdigit() or not str(dl).isdigit():
@@ -791,10 +796,19 @@ def create_flask_app(config):
                                SiteUploads=SiteUploads,
                                SiteRatios=SiteRatios,
                                SiteNames=SiteNames,
+                               SiteErr=SiteErrs,
                                CurrentSiteLabels=CurrentSiteLabels,
                                CurrentSiteUploads=CurrentSiteUploads,
                                CurrentSiteDownloads=CurrentSiteDownloads,
                                SiteUserStatistics=SiteUserStatistics)
+
+    # 刷流任务页面
+    @App.route('/brushtask', methods=['POST', 'GET'])
+    @login_required
+    def brushtask():
+        return render_template("site/brushtask.html",
+                               Count=1,
+                               Tasks=[''])
 
     # 服务页面
     @App.route('/service', methods=['POST', 'GET'])
