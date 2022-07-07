@@ -806,9 +806,14 @@ def create_flask_app(config):
     @App.route('/brushtask', methods=['POST', 'GET'])
     @login_required
     def brushtask():
+        # 站点列表
+        CfgSites = get_config_site()
+        # 任务列表
+        Tasks = get_brushtasks()
         return render_template("site/brushtask.html",
-                               Count=1,
-                               Tasks=[''])
+                               Count=len(Tasks),
+                               Sites=CfgSites,
+                               Tasks=Tasks)
 
     # 服务页面
     @App.route('/service', methods=['POST', 'GET'])
@@ -943,6 +948,17 @@ def create_flask_app(config):
         '''
         scheduler_cfg_list.append(
             {'name': '实时日志', 'time': '', 'state': 'OFF', 'id': 'logging', 'svg': svg, 'color': 'indigo'})
+
+        # 清理文件整理缓存
+        svg = '''
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-eraser" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+           <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+           <path d="M19 20h-10.5l-4.21 -4.3a1 1 0 0 1 0 -1.41l10 -10a1 1 0 0 1 1.41 0l5 5a1 1 0 0 1 0 1.41l-9.2 9.3"></path>
+           <path d="M18 13.3l-6.3 -6.3"></path>
+        </svg>
+        '''
+        scheduler_cfg_list.append(
+            {'name': '清理文件缓存', 'time': '手动', 'state': 'OFF', 'id': 'blacklist', 'svg': svg, 'color': 'red'})
 
         return render_template("service.html",
                                Count=len(scheduler_cfg_list),

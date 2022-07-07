@@ -18,6 +18,7 @@ from pt.mediaserver.jellyfin import Jellyfin
 from pt.mediaserver.plex import Plex
 from pt.rss import Rss
 from pt.sites import Sites
+from pt.subtitle import Subtitle
 from pt.torrent import Torrent
 from rmt.category import Category
 from rmt.doubanv2api.doubanapi import DoubanApi
@@ -82,7 +83,11 @@ class WebAction:
             "movie_calendar_data": self.__movie_calendar_data,
             "tv_calendar_data": self.__tv_calendar_data,
             "modify_tmdb_cache": self.__modify_tmdb_cache,
-            "rss_detail": self.__rss_detail
+            "rss_detail": self.__rss_detail,
+            "truncate_blacklist": self.__truncate_blacklist,
+            "add_brushtask": self.__add_brushtask,
+            "del_brushtask": self.__del_brushtask,
+            "brushtask_detail": self.__brushtask_detail
         }
 
     def action(self, cmd, data):
@@ -754,6 +759,7 @@ class WebAction:
         wechat_reload = False
         telegram_reload = False
         category_reload = False
+        subtitle_reload = False
         # 修改配置
         for key, value in cfgs:
             if key == "test" and value:
@@ -778,6 +784,8 @@ class WebAction:
                 wechat_reload = True
             if key.startswith("media.category"):
                 category_reload = True
+            if key.startswith("subtitle"):
+                subtitle_reload = True
         # 保存配置
         if not config_test:
             self.config.save_config(cfg)
@@ -806,6 +814,9 @@ class WebAction:
         # 重载二级分类
         if category_reload:
             Category().init_config()
+        # 重载字幕
+        if subtitle_reload:
+            Subtitle().init_config()
 
         return {"code": 0}
 
@@ -1274,6 +1285,84 @@ class WebAction:
         if MetaHelper().modify_meta_data(data.get("key"), data.get("title")):
             MetaHelper().save_meta_data(force=True)
         return {"code": 0}
+
+    @staticmethod
+    def __truncate_blacklist(data):
+        """
+        清空文件转移黑名单记录
+        """
+        return {"code": truncate_transfer_blacklist()}
+
+    @staticmethod
+    def __add_brushtask(data):
+        """
+        新增刷流任务
+        """
+        # 输入值
+        brushtask_id = data.get("brushtask_id")
+        brushtask_name = data.get("brushtask_name")
+        brushtask_site = data.get("brushtask_site")
+        brushtask_inteval = data.get("brushtask_inteval")
+        brushtask_downloader = data.get("brushtask_downloader")
+        brushtask_totalsize = data.get("brushtask_totalsize")
+        brushtask_state = data.get("brushtask_state")
+        brushtask_transfer = 'Y' if data.get("brushtask_transfer") else 'N'
+        brushtask_free = data.get("brushtask_free")
+        brushtask_torrent_size = data.get("brushtask_torrent_size")
+        brushtask_include = data.get("brushtask_include")
+        brushtask_exclude = data.get("brushtask_exclude")
+        brushtask_seedtime = data.get("brushtask_seedtime")
+        brushtask_seedratio = data.get("brushtask_seedratio")
+        brushtask_seedsize = data.get("brushtask_seedsize")
+        # 选种规则
+        rss_rule = {
+            "free": brushtask_free,
+            "size": brushtask_torrent_size,
+            "include": brushtask_include,
+            "exclude": brushtask_exclude
+        }
+        # 删除规则
+        remove_rule = {
+            "time": brushtask_seedtime,
+            "ratio": brushtask_seedratio,
+            "uploadsize": brushtask_seedsize
+        }
+        # 添加记录
+        item = {
+            "name": brushtask_name,
+            "site": brushtask_site,
+            "free": brushtask_free,
+            "interval": brushtask_inteval,
+            "downloader": brushtask_downloader,
+            "seed_size": brushtask_totalsize,
+            "transfer": brushtask_transfer,
+            "state": brushtask_state,
+            "rss_rule": rss_rule,
+            "remove_rule": remove_rule
+        }
+        if brushtask_id:
+            delete_brushtask(brushtask_id)
+        insert_brushtask(item)
+        return {"code": 0}
+
+    @staticmethod
+    def __del_brushtask(data):
+        """
+        删除刷流任务
+        """
+        brush_id = data.get("id")
+        if brush_id:
+            delete_brushtask(brush_id)
+            return {"code": 0}
+        return {"code": 1}
+
+    @staticmethod
+    def __brushtask_detail(data):
+        """
+        查询刷流任务详情
+        """
+        brush_id = data.get("id")
+        return {"code": 0, "tasks": get_brushtasks(brush_id)}
 
     @staticmethod
     def parse_sites_string(notes):
