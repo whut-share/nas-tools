@@ -10,6 +10,7 @@ from config import RMT_MEDIAEXT, Config, GRAP_FREE_SITES
 from message.channel.telegram import Telegram
 from message.channel.wechat import WeChat
 from message.send import Message
+from pt.brushtask import BrushTask
 from pt.client.qbittorrent import Qbittorrent
 from pt.client.transmission import Transmission
 from pt.douban import DouBan
@@ -1302,7 +1303,7 @@ class WebAction:
         brushtask_id = data.get("brushtask_id")
         brushtask_name = data.get("brushtask_name")
         brushtask_site = data.get("brushtask_site")
-        brushtask_inteval = data.get("brushtask_inteval")
+        brushtask_interval = data.get("brushtask_interval")
         brushtask_downloader = data.get("brushtask_downloader")
         brushtask_totalsize = data.get("brushtask_totalsize")
         brushtask_state = data.get("brushtask_state")
@@ -1332,7 +1333,7 @@ class WebAction:
             "name": brushtask_name,
             "site": brushtask_site,
             "free": brushtask_free,
-            "interval": brushtask_inteval,
+            "interval": brushtask_interval,
             "downloader": brushtask_downloader,
             "seed_size": brushtask_totalsize,
             "transfer": brushtask_transfer,
@@ -1343,6 +1344,8 @@ class WebAction:
         if brushtask_id:
             delete_brushtask(brushtask_id)
         insert_brushtask(item)
+        # 重新初始化任务
+        BrushTask().init_config()
         return {"code": 0}
 
     @staticmethod
@@ -1353,6 +1356,8 @@ class WebAction:
         brush_id = data.get("id")
         if brush_id:
             delete_brushtask(brush_id)
+            # 重新初始化任务
+            BrushTask().init_config()
             return {"code": 0}
         return {"code": 1}
 
@@ -1362,7 +1367,29 @@ class WebAction:
         查询刷流任务详情
         """
         brush_id = data.get("id")
-        return {"code": 0, "tasks": get_brushtasks(brush_id)}
+        brushtask = get_brushtasks(brush_id)
+        if not brushtask:
+            return {"code": 1, "task": {}}
+        task = {
+            "id": brushtask[0][0],
+            "name": brushtask[0][1],
+            "site": brushtask[0][2],
+            "interval": brushtask[0][4],
+            "state": brushtask[0][5],
+            "downloader": brushtask[0][6],
+            "transfer": brushtask[0][7],
+            "free": brushtask[0][8],
+            "rss_rule": eval(brushtask[0][9]),
+            "remove_rule": eval(brushtask[0][10]),
+            "seed_size": brushtask[0][11],
+            "download_count": brushtask[0][12],
+            "remove_count": brushtask[0][13],
+            "download_size": str_filesize(brushtask[0][14]),
+            "upload_size": str_filesize(brushtask[0][15]),
+            "lst_mod_date": brushtask[0][16],
+            "site_url": "http://%s" % parse.urlparse(brushtask[0][17]).netloc if brushtask[0][17] else ""
+        }
+        return {"code": 0, "task": task}
 
     @staticmethod
     def parse_sites_string(notes):
@@ -1380,8 +1407,6 @@ class WebAction:
     def parse_filter_string(notes):
         if not notes:
             return ""
-        if not notes:
-            return ""
         _, _, over_edition, filter_map = Torrent.get_rss_note_item(notes)
         filter_htmls = []
         if over_edition:
@@ -1390,3 +1415,41 @@ class WebAction:
                          filter_map.values() if v]
 
         return "".join(filter_htmls)
+
+    @staticmethod
+    def parse_brush_rule_string(rules: dict):
+        if not rules:
+            return ""
+        rule_filter_string = {"gt": "大于", "lt": "小于", "bw": "介于"}
+        rule_htmls = []
+        if rules.get("size"):
+            sizes = rules.get("size").split("#")
+            if sizes[0]:
+                if sizes[1]:
+                    sizes[1] = sizes[1].replace(",", "-")
+                rule_htmls.append('<span class="badge badge-outline text-blue me-1 mb-1" title="种子大小">%s: %s GB</span>'
+                                  % (rule_filter_string.get(sizes[0]), sizes[1]))
+        if rules.get("include"):
+            rule_htmls.append('<span class="badge badge-outline text-green me-1 mb-1" title="包含规则">包含: %s</span>'
+                              % rules.get("include"))
+
+        if rules.get("exclude"):
+            rule_htmls.append('<span class="badge badge-outline text-red me-1 mb-1" title="排除规则">排除: %s</span>'
+                              % rules.get("exclude"))
+        if rules.get("time"):
+            times = rules.get("time").split("#")
+            if times[0]:
+                rule_htmls.append('<span class="badge badge-outline text-orange me-1 mb-1" title="做种时间">做种%s: %s 小时</span>'
+                                  % (rule_filter_string.get(times[0]), times[1]))
+        if rules.get("ratio"):
+            ratios = rules.get("ratio").split("#")
+            if ratios[0]:
+                rule_htmls.append('<span class="badge badge-outline text-orange me-1 mb-1" title="分享率">分享率%s: %s</span>'
+                                  % (rule_filter_string.get(ratios[0]), ratios[1]))
+        if rules.get("uploadsize"):
+            uploadsizes = rules.get("uploadsize").split("#")
+            if uploadsizes[0]:
+                rule_htmls.append('<span class="badge badge-outline text-orange me-1 mb-1" title="上传量">上传量%s: %s GB</span>'
+                                  % (rule_filter_string.get(uploadsizes[0]), uploadsizes[1]))
+
+        return "<br>".join(rule_htmls)
