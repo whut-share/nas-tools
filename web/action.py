@@ -6,7 +6,7 @@ from flask_login import logout_user
 from werkzeug.security import generate_password_hash
 
 import log
-from config import RMT_MEDIAEXT, Config, GRAP_FREE_SITES
+from config import RMT_MEDIAEXT, Config
 from message.channel.telegram import Telegram
 from message.channel.wechat import WeChat
 from message.send import Message
@@ -18,6 +18,7 @@ from pt.downloader import Downloader
 from pt.mediaserver.jellyfin import Jellyfin
 from pt.mediaserver.plex import Plex
 from pt.rss import Rss
+from pt.siteconf import RSS_SITE_GRAP_CONF
 from pt.sites import Sites
 from pt.subtitle import Subtitle
 from pt.torrent import Torrent
@@ -88,7 +89,9 @@ class WebAction:
             "truncate_blacklist": self.__truncate_blacklist,
             "add_brushtask": self.__add_brushtask,
             "del_brushtask": self.__del_brushtask,
-            "brushtask_detail": self.__brushtask_detail
+            "brushtask_detail": self.__brushtask_detail,
+            "add_downloader": self.__add_downloader,
+            "delete_downloader": self.__delete_downloader
         }
 
     def action(self, cmd, data):
@@ -651,18 +654,21 @@ class WebAction:
         tid = data.get("id")
         site_free = False
         site_2xfree = False
+        site_hr = False
         if tid:
             ret = get_site_by_id(tid)
             if ret[0][3]:
                 url_host = parse.urlparse(ret[0][3]).netloc
-                if url_host in GRAP_FREE_SITES.keys():
-                    if GRAP_FREE_SITES[url_host].get("FREE"):
+                if url_host in RSS_SITE_GRAP_CONF.keys():
+                    if RSS_SITE_GRAP_CONF[url_host].get("FREE"):
                         site_free = True
-                    if GRAP_FREE_SITES[url_host].get("2XFREE"):
+                    if RSS_SITE_GRAP_CONF[url_host].get("2XFREE"):
                         site_2xfree = True
+                    if RSS_SITE_GRAP_CONF[url_host].get("HR"):
+                        site_hr = True
         else:
             ret = []
-        return {"code": 0, "site": ret, "site_free": site_free, "site_2xfree": site_2xfree}
+        return {"code": 0, "site": ret, "site_free": site_free, "site_2xfree": site_2xfree, "site_hr": site_hr}
 
     @staticmethod
     def __del_site(data):
@@ -755,8 +761,6 @@ class WebAction:
         scheduler_reload = False
         jellyfin_reload = False
         plex_reload = False
-        qbittorrent_reload = False
-        transmission_reload = False
         wechat_reload = False
         telegram_reload = False
         category_reload = False
@@ -800,12 +804,6 @@ class WebAction:
         # 重载Plex
         if plex_reload:
             Plex().init_config()
-        # 重载qbittorrent
-        if qbittorrent_reload:
-            Qbittorrent().init_config()
-        # 重载transmission
-        if transmission_reload:
-            Transmission().init_config()
         # 重载wechat
         if wechat_reload:
             WeChat().init_config()
@@ -1309,18 +1307,22 @@ class WebAction:
         brushtask_state = data.get("brushtask_state")
         brushtask_transfer = 'Y' if data.get("brushtask_transfer") else 'N'
         brushtask_free = data.get("brushtask_free")
+        brushtask_hr = data.get("brushtask_hr")
         brushtask_torrent_size = data.get("brushtask_torrent_size")
         brushtask_include = data.get("brushtask_include")
         brushtask_exclude = data.get("brushtask_exclude")
+        brushtask_dlcount = data.get("brushtask_dlcount")
         brushtask_seedtime = data.get("brushtask_seedtime")
         brushtask_seedratio = data.get("brushtask_seedratio")
         brushtask_seedsize = data.get("brushtask_seedsize")
         # 选种规则
         rss_rule = {
             "free": brushtask_free,
+            "hr": brushtask_hr,
             "size": brushtask_torrent_size,
             "include": brushtask_include,
-            "exclude": brushtask_exclude
+            "exclude": brushtask_exclude,
+            "dlcount": brushtask_dlcount
         }
         # 删除规则
         remove_rule = {
@@ -1341,9 +1343,7 @@ class WebAction:
             "rss_rule": rss_rule,
             "remove_rule": remove_rule
         }
-        if brushtask_id:
-            delete_brushtask(brushtask_id)
-        insert_brushtask(item)
+        insert_brushtask(brushtask_id, item)
         # 重新初始化任务
         BrushTask().init_config()
         return {"code": 0}
@@ -1392,6 +1392,44 @@ class WebAction:
         return {"code": 0, "task": task}
 
     @staticmethod
+    def __add_downloader(data):
+        """
+        添加自定义下载器
+        """
+        test = data.get("test")
+        dl_name = data.get("name")
+        dl_type = data.get("type")
+        user_config = {"host": data.get("host"),
+                       "port": data.get("port"),
+                       "username": data.get("username"),
+                       "password": data.get("password"),
+                       "save_dir": data.get("save_dir")}
+        if test:
+            # 测试
+            if dl_type == "qbittorrent":
+                downloader = Qbittorrent(user_config=user_config)
+            else:
+                downloader = Transmission(user_config=user_config)
+            if downloader.get_status():
+                return {"code": 0}
+            else:
+                return {"code": 1}
+        else:
+            # 保存
+            insert_user_downloader(name=dl_name, dtype=dl_type, user_config=user_config, note=None)
+            return {"code": 0}
+
+    @staticmethod
+    def __delete_downloader(data):
+        """
+        删除自定义下载器
+        """
+        dl_id = data.get("id")
+        if dl_id:
+            delete_user_downloader(dl_id)
+        return {"code": 0}
+
+    @staticmethod
     def parse_sites_string(notes):
         if not notes:
             return ""
@@ -1432,10 +1470,14 @@ class WebAction:
         if rules.get("include"):
             rule_htmls.append('<span class="badge badge-outline text-green me-1 mb-1" title="包含规则">包含: %s</span>'
                               % rules.get("include"))
-
+        if rules.get("hr"):
+            rule_htmls.append('<span class="badge badge-outline text-red me-1 mb-1" title="排除HR">排除: HR</span>')
         if rules.get("exclude"):
             rule_htmls.append('<span class="badge badge-outline text-red me-1 mb-1" title="排除规则">排除: %s</span>'
                               % rules.get("exclude"))
+        if rules.get("dlcount"):
+            rule_htmls.append('<span class="badge badge-outline text-orange me-1 mb-1" title="同时下载数量限制">同时下载: %s</span>'
+                              % rules.get("dlcount"))
         if rules.get("time"):
             times = rules.get("time").split("#")
             if times[0]:

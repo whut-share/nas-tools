@@ -880,7 +880,7 @@ def insert_site_statistics_history(site, upload, download, ratio, url, seeding, 
           " URL) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
     return update_by_sql(sql, (str_sql(site), user_level, date_now, upload, download, ratio, seeding, leeching,
-                                   seeding_size, bonus, url))
+                               seeding_size, bonus, url))
 
 
 # 查询站点数据历史
@@ -904,10 +904,8 @@ def get_site_statistics_recent_sites(days=7, strict_urls=None):
         ret_sites = []
         ret_site_uploads = []
         ret_site_downloads = []
-        max_date = date_ret[0][0]
         min_date = date_ret[0][1]
         # 查询开始值
-        site_b_data = {}
         sql = """SELECT SITE, MIN(UPLOAD), MIN(DOWNLOAD), MAX(UPLOAD), MAX(DOWNLOAD)
                  FROM (SELECT SITE, DATE, SUM(UPLOAD) as UPLOAD, SUM(DOWNLOAD) as DOWNLOAD FROM SITE_STATISTICS_HISTORY WHERE DATE >= ? GROUP BY SITE, DATE) X 
                  GROUP BY SITE"""
@@ -923,12 +921,12 @@ def get_site_statistics_recent_sites(days=7, strict_urls=None):
                 ret_b[1] = ret_b[3]
                 ret_b[2] = ret_b[4]
             ret_sites.append(ret_b[0])
-            if int(ret_b[1])< int(ret_b[3]):
+            if int(ret_b[1]) < int(ret_b[3]):
                 total_upload += int(ret_b[3]) - int(ret_b[1])
                 ret_site_uploads.append(int(ret_b[3]) - int(ret_b[1]))
             else:
                 ret_site_uploads.append(0)
-            if int(ret_b[2])< int(ret_b[4]):
+            if int(ret_b[2]) < int(ret_b[4]):
                 total_download += int(ret_b[4]) - int(ret_b[2])
                 ret_site_downloads.append(int(ret_b[4]) - int(ret_b[2]))
             else:
@@ -1012,43 +1010,72 @@ def is_media_downloaded(title, year):
 
 
 # 新增刷流任务
-def insert_brushtask(item):
-    sql = '''
-        INSERT INTO SITE_BRUSH_TASK(
-            NAME,
-            SITE,
-            FREELEECH,
-            RSS_RULE,
-            REMOVE_RULE,
-            SEED_SIZE,
-            INTEVAL,
-            DOWNLOADER,
-            TRANSFER,
-            DOWNLOAD_COUNT,
-            REMOVE_COUNT,
-            DOWNLOAD_SIZE,
-            UPLOAD_SIZE,
-            STATE,
-            LST_MOD_DATE
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-    '''
-    return update_by_sql(sql, (item.get('name'),
-                               item.get('site'),
-                               item.get('free'),
-                               str(item.get('rss_rule')),
-                               str(item.get('remove_rule')),
-                               item.get('seed_size'),
-                               item.get('interval'),
-                               item.get('downloader'),
-                               item.get('transfer'),
-                               0,
-                               0,
-                               0,
-                               0,
-                               item.get('state'),
-                               time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))))
+def insert_brushtask(brush_id, item):
+    if not brush_id:
+        sql = '''
+            INSERT INTO SITE_BRUSH_TASK(
+                NAME,
+                SITE,
+                FREELEECH,
+                RSS_RULE,
+                REMOVE_RULE,
+                SEED_SIZE,
+                INTEVAL,
+                DOWNLOADER,
+                TRANSFER,
+                DOWNLOAD_COUNT,
+                REMOVE_COUNT,
+                DOWNLOAD_SIZE,
+                UPLOAD_SIZE,
+                STATE,
+                LST_MOD_DATE
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+        '''
+        return update_by_sql(sql, (item.get('name'),
+                                   item.get('site'),
+                                   item.get('free'),
+                                   str(item.get('rss_rule')),
+                                   str(item.get('remove_rule')),
+                                   item.get('seed_size'),
+                                   item.get('interval'),
+                                   item.get('downloader'),
+                                   item.get('transfer'),
+                                   0,
+                                   0,
+                                   0,
+                                   0,
+                                   item.get('state'),
+                                   time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))))
+    else:
+        sql = '''
+            UPDATE SITE_BRUSH_TASK SET
+                NAME = ?,
+                SITE = ?,
+                FREELEECH = ?,
+                RSS_RULE = ?,
+                REMOVE_RULE = ?,
+                SEED_SIZE = ?,
+                INTEVAL = ?,
+                DOWNLOADER = ?,
+                TRANSFER = ?,
+                STATE = ?,
+                LST_MOD_DATE = ?
+            WHERE ID = ?
+        '''
+        return update_by_sql(sql, (item.get('name'),
+                                   item.get('site'),
+                                   item.get('free'),
+                                   str(item.get('rss_rule')),
+                                   str(item.get('remove_rule')),
+                                   item.get('seed_size'),
+                                   item.get('interval'),
+                                   item.get('downloader'),
+                                   item.get('transfer'),
+                                   item.get('state'),
+                                   time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())),
+                                   brush_id))
 
 
 # 删除刷流任务
@@ -1064,14 +1091,19 @@ def get_brushtasks(brush_id=None):
     if brush_id:
         sql = "SELECT T.ID,T.NAME,T.SITE,C.NAME,T.INTEVAL,T.STATE,T.DOWNLOADER,T.TRANSFER," \
               "T.FREELEECH,T.RSS_RULE,T.REMOVE_RULE,T.SEED_SIZE," \
-              "T.DOWNLOAD_COUNT,T.REMOVE_COUNT,T.DOWNLOAD_SIZE,T.UPLOAD_SIZE,T.LST_MOD_DATE,C.RSSURL,C.COOKIE " \
-              "FROM SITE_BRUSH_TASK T, CONFIG_SITE C WHERE T.SITE=C.ID AND T.ID = ?"
+              "T.DOWNLOAD_COUNT,T.REMOVE_COUNT,T.DOWNLOAD_SIZE,T.UPLOAD_SIZE,T.LST_MOD_DATE,C.RSSURL,C.COOKIE,D.NAME " \
+              "FROM SITE_BRUSH_TASK T " \
+              "LEFT JOIN CONFIG_SITE C ON C.ID = T.SITE " \
+              "LEFT JOIN SITE_BRUSH_DOWNLOADERS D ON D.ID = T.DOWNLOADER " \
+              "WHERE T.ID = ?"
         return select_by_sql(sql, (brush_id,))
     else:
         sql = "SELECT T.ID,T.NAME,T.SITE,C.NAME,T.INTEVAL,T.STATE,T.DOWNLOADER,T.TRANSFER," \
               "T.FREELEECH,T.RSS_RULE,T.REMOVE_RULE,T.SEED_SIZE," \
-              "T.DOWNLOAD_COUNT,T.REMOVE_COUNT,T.DOWNLOAD_SIZE,T.UPLOAD_SIZE,T.LST_MOD_DATE,C.RSSURL,C.COOKIE " \
-              "FROM SITE_BRUSH_TASK T, CONFIG_SITE C WHERE T.SITE=C.ID"
+              "T.DOWNLOAD_COUNT,T.REMOVE_COUNT,T.DOWNLOAD_SIZE,T.UPLOAD_SIZE,T.LST_MOD_DATE,C.RSSURL,C.COOKIE,D.NAME " \
+              "FROM SITE_BRUSH_TASK T " \
+              "LEFT JOIN CONFIG_SITE C ON C.ID = T.SITE " \
+              "LEFT JOIN SITE_BRUSH_DOWNLOADERS D ON D.ID = T.DOWNLOADER "
         return select_by_sql(sql)
 
 
@@ -1079,7 +1111,7 @@ def get_brushtasks(brush_id=None):
 def get_brushtask_totalsize(brush_id):
     if not brush_id:
         return 0
-    sql = "SELECT SUM(CAST(S.TORRENT_SIZE AS DECIMAL)) FROM SITE_BRUSH_TORRENTS S WHERE S.ID = ?"
+    sql = "SELECT SUM(CAST(S.TORRENT_SIZE AS DECIMAL)) FROM SITE_BRUSH_TORRENTS S WHERE S.TASK_ID = ?"
     ret = select_by_sql(sql, (brush_id,))
     if ret and ret[0][0]:
         return int(ret[0][0])
@@ -1098,13 +1130,13 @@ def add_brushtask_download_count(brush_id, size):
 
 
 # 更新上传量
-def add_brushtask_upload_count(brush_id, size):
+def add_brushtask_upload_count(brush_id, size, count):
     if not brush_id:
         return
     if not str(size).isdigit():
         return
-    sql = "UPDATE SITE_BRUSH_TASK SET REMOVE_COUNT = REMOVE_COUNT + 1, UPLOAD_SIZE = UPLOAD_SIZE + ? WHERE ID = ?"
-    return update_by_sql(sql, (int(size), brush_id))
+    sql = "UPDATE SITE_BRUSH_TASK SET REMOVE_COUNT = REMOVE_COUNT + ?, UPLOAD_SIZE = ? WHERE ID = ?"
+    return update_by_sql(sql, (count, int(size), brush_id))
 
 
 # 增加刷流下载的种子信息
@@ -1124,6 +1156,8 @@ def insert_brushtask_torrent(brush_id, title, enclosure, downloader, download_id
             ?, ?, ?, ?, ?, ?, ?
         )
     '''
+    if is_brushtask_torrent_exists(brush_id, title, enclosure):
+        return False
     return update_by_sql(sql, (brush_id,
                                title,
                                size,
@@ -1141,3 +1175,45 @@ def get_brushtask_torrents(brush_id):
           "FROM SITE_BRUSH_TORRENTS " \
           "WHERE TASK_ID = ? "
     return select_by_sql(sql, (brush_id,))
+
+
+# 查询刷流任务种子是否已存在
+def is_brushtask_torrent_exists(brush_id, title, enclosure):
+    if not brush_id:
+        return False
+    sql = "SELECT COUNT(1) FROM SITE_BRUSH_TORRENTS WHERE TASK_ID = ? AND TORRENT_NAME = ? AND ENCLOSURE = ?"
+    ret = select_by_sql(sql, (brush_id, title, enclosure))
+    if ret and ret[0][0] > 0:
+        return True
+    else:
+        return False
+
+
+# 查询自定义下载器
+def get_user_downloaders(did=None):
+    if did:
+        sql = "SELECT ID,NAME,TYPE,HOST,PORT,USERNAME,PASSWORD,SAVE_DIR,NOTE FROM SITE_BRUSH_DOWNLOADERS WHERE ID = ?"
+        return select_by_sql(sql, (did,))
+    else:
+        sql = "SELECT ID,NAME,TYPE,HOST,PORT,USERNAME,PASSWORD,SAVE_DIR,NOTE FROM SITE_BRUSH_DOWNLOADERS"
+        return select_by_sql(sql)
+
+
+# 新增自定义下载器
+def insert_user_downloader(name, dtype, user_config, note):
+    sql = "INSERT INTO SITE_BRUSH_DOWNLOADERS (NAME,TYPE,HOST,PORT,USERNAME,PASSWORD,SAVE_DIR,NOTE)" \
+          "VALUES (?,?,?,?,?,?,?,?)"
+    return update_by_sql(sql, (str_sql(name),
+                               dtype,
+                               str_sql(user_config.get("host")),
+                               str_sql(user_config.get("port")),
+                               str_sql(user_config.get("username")),
+                               str_sql(user_config.get("password")),
+                               str_sql(user_config.get("save_dir")),
+                               str_sql(note)))
+
+
+# 删除自定义下载器
+def delete_user_downloader(did):
+    sql = "DELETE FROM SITE_BRUSH_DOWNLOADERS WHERE ID = ?"
+    return update_by_sql(sql, (did,))

@@ -16,6 +16,27 @@
           <a href="javascript:show_brushtask_modal()" class="btn btn-primary d-sm-none btn-icon">
             <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           </a>
+          <a href="javascript:show_brushtask_downloader_modal()" class="btn d-none d-sm-inline-block" title="自定义下载器">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-apps" width="40" height="40" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+               <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+               <rect x="4" y="4" width="6" height="6" rx="1"></rect>
+               <rect x="4" y="14" width="6" height="6" rx="1"></rect>
+               <rect x="14" y="14" width="6" height="6" rx="1"></rect>
+               <line x1="14" y1="7" x2="20" y2="7"></line>
+               <line x1="17" y1="4" x2="17" y2="10"></line>
+            </svg>
+            自定义下载器
+          </a>
+          <a href="javascript:show_brushtask_downloader_modal()" class="btn d-sm-none btn-icon" title="自定义下载器">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-apps" width="40" height="40" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+               <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+               <rect x="4" y="4" width="6" height="6" rx="1"></rect>
+               <rect x="4" y="14" width="6" height="6" rx="1"></rect>
+               <rect x="14" y="14" width="6" height="6" rx="1"></rect>
+               <line x1="14" y1="7" x2="20" y2="7"></line>
+               <line x1="17" y1="4" x2="17" y2="10"></line>
+            </svg>
+          </a>
         </div>
       </div>
     </div>
@@ -46,7 +67,7 @@
                 <div class="d-flex align-items-center">
                   <img class="avatar-sm me-2" src="{{ Task.site_url }}/favicon.ico" width="24" height="24" alt=""
                         onerror="this.src='../static/img/pt.jpg'" style="cursor:pointer"/>
-                  <h2>{{ Task.site }}</h2>
+                  <h3>{{ Task.site }}</h3>
                 </div>
               </div>
             </div>
@@ -89,15 +110,15 @@
             </div>
             <div class="datagrid-item">
               <div class="datagrid-title">下载器</div>
-              <div class="datagrid-content">{{ Task.downloader }}</div>
+              <div class="datagrid-content">{{ Task.downloader or "" }}</div>
             </div>
             <div class="datagrid-item">
               <div class="datagrid-title">转移到媒体库</div>
               <div class="datagrid-content">
                 {% if Task.transfer == 'Y' %}
-                <span class="status status-green">ON</span>
+                <span class="status status-green">开</span>
                 {% else %}
-                <span class="status status-red">OFF</span>
+                <span class="status status-red">关</span>
                 {% endif %}
               </div>
             </div>
@@ -157,7 +178,7 @@
 <div class="modal modal-blur fade" id="modal-brushtask" tabindex="-1" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
     <div class="modal-content">
-      <div class="card" style="border-top: 0">
+      <div class="card border-top-0">
         <div class="card-header">
           <h5 class="modal-title" id="brushtask_modal_title">新建任务</h5>
           <input type="hidden" id="brushtask_id">
@@ -192,11 +213,12 @@
           <div class="row">
             <div class="col-lg-4">
               <div class="mb-3">
-                <label class="form-label required">下载器 <span class="form-help bg-red-lt" title="选择刷流任务使用的下载器，如需识别转移到媒体库，则需选择当前正在使用的下载器" data-bs-toggle="tooltip">?</span></label>
+                <label class="form-label required">下载器 <span class="form-help bg-red-lt" title="选择刷流任务使用的下载器，在自定义下载器中添加，如需识别转移到媒体库，需与正在使用的下载器相同" data-bs-toggle="tooltip">?</span></label>
                 <select class="form-select" id="brushtask_downloader">
                   <option value="" selected>请选择</option>
-                  <option value="qbittorrent">Qbittorrent</option>
-                  <option value="transmission">Transmission</option>
+                  {% for downloader in Downloaders %}
+                  <option value="{{ downloader[0] }}">{{ downloader[1] }}</option>
+                  {% endfor %}
                 </select>
               </div>
             </div>
@@ -232,11 +254,20 @@
           <div class="row">
             <div class="col-lg-4">
               <div class="mb-3">
-                <label class="form-label">促销</label>
+                <label class="form-label">促销 <span class="form-help bg-red-lt" title="选全部会下载到促销的种子，免费包括2X免费" data-bs-toggle="tooltip">?</span></label>
                 <select class="form-select" id="brushtask_free">
                   <option value="" selected>全部</option>
                   <option value="FREE">免费</option>
                   <option value="2XFREE">2X免费</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-lg-4">
+              <div class="mb-3">
+                <label class="form-label">Hit&Run</label>
+                <select class="form-select" id="brushtask_hr">
+                  <option value="" selected>全部</option>
+                  <option value="HR">排除HR</option>
                 </select>
               </div>
             </div>
@@ -268,16 +299,22 @@
             </div>
           </div>
           <div class="row">
-            <div class="col-lg-6">
+            <div class="col-lg-4">
               <div class="mb-3">
                 <label class="form-label">包含 <span class="form-help bg-red-lt" title="种子名称或副标题中包括对应关键字或者匹配正则式时才会下载" data-bs-toggle="tooltip">?</span></label>
                 <input type="text" id="brushtask_include" class="form-control" placeholder="关键字或正则表达式">
               </div>
             </div>
-            <div class="col-lg-6">
+            <div class="col-lg-4">
               <div class="mb-3">
                 <label class="form-label">排除 <span class="form-help bg-red-lt" title="种子名称或副标题中包括对应关键字或者匹配正则式时不会下载" data-bs-toggle="tooltip">?</span></label>
                 <input type="text" id="brushtask_exclude" class="form-control" placeholder="关键字或正则表达式">
+              </div>
+            </div>
+            <div class="col-lg-4">
+              <div class="mb-3">
+                <label class="form-label">同时下载数量限制 <span class="form-help bg-red-lt" title="下载器中正在下载的任务数超过此值时不再添加下载" data-bs-toggle="tooltip">?</span></label>
+                <input type="text" id="brushtask_dlcount" class="form-control" placeholder="10">
               </div>
             </div>
           </div>
@@ -371,6 +408,7 @@
         $("#brushtask_modal_title").text("编辑任务");
         $("#brushtask_name").val(ret.task.name);
         $("#brushtask_site").val(ret.task.site);
+        brushtask_site_change(ret.task.site, ret.task.free, ret.task.rss_rule.hr);
         $("#brushtask_interval").val(ret.task.interval);
         $("#brushtask_downloader").val(ret.task.downloader);
         $("#brushtask_totalsize").val(ret.task.seed_size);
@@ -380,9 +418,9 @@
         }else{
           $("#brushtask_transfer").prop("checked", false);
         }
+        $("#brushtask_dlcount").val(ret.task.rss_rule.dlcount)
         $("#brushtask_include").val(ret.task.rss_rule.include);
         $("#brushtask_exclude").val(ret.task.rss_rule.exclude);
-        $("#brushtask_free").val(ret.task.free);
         //种子大小
         size_str = ret.task.rss_rule.size.split('#');
         filter_item_change(size_str[0], 'brushtask_torrent_size', $('#brushtask_torrent_size_do_' + size_str[0]), size_str[1])
@@ -412,7 +450,7 @@
   }
 
   // 选择了站点
-  function brushtask_site_change(site_id){
+  function brushtask_site_change(site_id, free_value, hr_value){
     if(!site_id){
       return;
     }
@@ -424,6 +462,17 @@
       }
       if(ret.site_2xfree){
         $("#brushtask_free").append('<option value="2XFREE">2X免费</option>');
+      }
+      if(free_value){
+        $("#brushtask_free").val(free_value);
+      }
+      $("#brushtask_hr").empty();
+      $("#brushtask_hr").append('<option value="" selected>全部</option>');
+      if(ret.site_hr){
+        $("#brushtask_hr").append('<option value="HR">排除HR</option>');
+      }
+      if(hr_value){
+        $("#brushtask_hr").val(hr_value);
       }
     });
   }
@@ -487,6 +536,7 @@
     var brushtask_state = $("#brushtask_state").val();
     var brushtask_transfer = $("#brushtask_transfer").prop('checked');
     var brushtask_free = $("#brushtask_free").val();
+    var brushtask_hr = $("#brushtask_hr").val();
     var brushtask_torrent_size_do = $("#brushtask_torrent_size_do").val();
     var brushtask_torrent_size = $("#brushtask_torrent_size").val();
     if(brushtask_torrent_size_do && !brushtask_torrent_size){
@@ -504,6 +554,13 @@
     }
     var brushtask_include = $("#brushtask_include").val();
     var brushtask_exclude = $("#brushtask_exclude").val();
+    var brushtask_dlcount = $("#brushtask_dlcount").val();
+    if(brushtask_dlcount && isNaN(brushtask_dlcount)){
+      $("#brushtask_dlcount").addClass("is-invalid");
+      return;
+    }else{
+      $("#brushtask_dlcount").removeClass("is-invalid");
+    }
     var brushtask_seedtime_do = $("#brushtask_seedtime_do").val();
     var brushtask_seedtime = $("#brushtask_seedtime").val();
     if(brushtask_seedtime_do && !brushtask_seedtime){
@@ -552,9 +609,11 @@
       brushtask_state: brushtask_state,
       brushtask_transfer: brushtask_transfer,
       brushtask_free: brushtask_free,
+      brushtask_hr: brushtask_hr,
       brushtask_torrent_size: brushtask_torrent_size_do + "#" + brushtask_torrent_size,
       brushtask_include: brushtask_include,
       brushtask_exclude: brushtask_exclude,
+      brushtask_dlcount: brushtask_dlcount,
       brushtask_seedtime: brushtask_seedtime_do + "#" + brushtask_seedtime,
       brushtask_seedratio: brushtask_seedratio_do + "#" + brushtask_seedratio,
       brushtask_seedsize: brushtask_seedsize_do + "#" + brushtask_seedsize
@@ -564,6 +623,11 @@
       $("#modal-brushtask").modal('hide');
       navmenu('brushtask');
     });
+  }
+
+  // 自定义下载器
+  function show_brushtask_downloader_modal(){
+    navmenu('userdownloader');
   }
 
   // 绑定事件
