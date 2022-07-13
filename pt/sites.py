@@ -5,11 +5,12 @@ from threading import Lock
 
 import log
 from message.send import Message
+from pt.filterrules import FilterRule
 from pt.siteuserinfo.site_user_info_factory import SiteUserInfoFactory
 from utils.functions import singleton
 from utils.http_utils import RequestUtils
 from utils.sqls import get_config_site, insert_site_statistics_history, update_site_user_statistics, \
-    get_site_statistics_recent_sites, get_site_user_statistics
+    get_site_statistics_recent_sites, get_site_user_statistics, get_site_statistics_history
 
 lock = Lock()
 
@@ -17,6 +18,7 @@ lock = Lock()
 @singleton
 class Sites:
     message = None
+    filtersites = None
     __sites_data = {}
     __pt_sites = None
     __last_update_time = None
@@ -27,9 +29,40 @@ class Sites:
 
     def init_config(self):
         self.message = Message()
+        self.filtersites = FilterRule()
         self.__pt_sites = get_config_site()
         self.__sites_data = {}
         self.__last_update_time = None
+
+    def get_sites(self, siteid=None):
+        """
+        获取站点配置
+        """
+        ret_sites = []
+        for site in self.__pt_sites:
+            rule_groupid = str(site[9]).split("|")[1] if site[9] and len(str(site[9]).split("|")) > 1 else ""
+            if rule_groupid:
+                rule_name = self.filtersites.get_rule_groups(rule_groupid).get("name") or ""
+            else:
+                rule_name = ""
+            site_info = {
+                "id": site[0],
+                "name": site[1],
+                "pri": site[2],
+                "rssurl": site[3],
+                "signurl": site[4],
+                "cookie": site[5],
+                "free": str(site[9]).split("|")[0] if site[9] and str(site[9]).split("|")[0] in ["FREE",
+                                                                                                 "2XFREE"] else "",
+                "rule": rule_groupid,
+                "rule_name": rule_name
+            }
+            if siteid and int(site[0]) == int(siteid):
+                return site_info
+            ret_sites.append(site_info)
+        if siteid:
+            return {}
+        return ret_sites
 
     def refresh_all_pt_data(self, force=False, specify_sites=None):
         """
@@ -228,3 +261,23 @@ class Sites:
             specify_sites = [specify_sites]
 
         self.refresh_all_pt_data(force=True, specify_sites=specify_sites)
+
+    @staticmethod
+    def get_pt_site_activity_history(site, days=365*2):
+        """
+        查询站点 上传，下载，做种数据
+        :param site: 站点名称
+        :param days: 最大数据量
+        :return:
+        """
+        site_activities = {"upload": [], "download": [], "bonus": [], "seeding": [], "seeding_size": []}
+        sql_site_activities = get_site_statistics_history(site=site, days=days)
+        for sql_site_activity in sql_site_activities:
+            timestamp = datetime.strptime(sql_site_activity[0], '%Y-%m-%d').timestamp() * 1000
+            site_activities["upload"].append([timestamp, sql_site_activity[1]])
+            site_activities["download"].append([timestamp, sql_site_activity[2]])
+            site_activities["bonus"].append([timestamp, sql_site_activity[3]])
+            site_activities["seeding"].append([timestamp, sql_site_activity[4]])
+            site_activities["seeding_size"].append([timestamp, sql_site_activity[5]])
+
+        return site_activities
