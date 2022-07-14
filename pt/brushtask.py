@@ -157,22 +157,22 @@ class BrushTask(object):
                     continue
                 # 开始下载
                 log.debug("【BRUSH】%s 符合条件，开始下载..." % torrent_name)
-                self.__download_torrent(downloadercfg=downloader_cfg,
-                                        title=torrent_name,
-                                        enclosure=enclosure,
-                                        size=size,
-                                        taskid=taskid,
-                                        transfer=True if taskinfo.get("transfer") == 'Y' else False,
-                                        taskname=task_name)
-                # 计数
-                success_count += 1
-                # 再判断一次
-                if not self.__is_allow_new_torrent(taskid=taskid,
-                                                   taskname=task_name,
-                                                   seedsize=seed_size,
-                                                   dlcount=rss_rule.get("dlcount"),
-                                                   downloadercfg=downloader_cfg):
-                    break
+                if self.__download_torrent(downloadercfg=downloader_cfg,
+                                           title=torrent_name,
+                                           enclosure=enclosure,
+                                           size=size,
+                                           taskid=taskid,
+                                           transfer=True if taskinfo.get("transfer") == 'Y' else False,
+                                           taskname=task_name):
+                    # 计数
+                    success_count += 1
+                    # 再判断一次
+                    if not self.__is_allow_new_torrent(taskid=taskid,
+                                                       taskname=task_name,
+                                                       seedsize=seed_size,
+                                                       dlcount=rss_rule.get("dlcount"),
+                                                       downloadercfg=downloader_cfg):
+                        break
             except Exception as err:
                 print(str(err))
                 continue
@@ -238,15 +238,12 @@ class BrushTask(object):
                     dltime = torrent.get("time_elapsed") or 0
                     # 上传量
                     uploaded = torrent.get("uploaded") or 0
+                    total_uploaded += uploaded
                     if self.__check_remove_rule(remove_rule=taskinfo.get("remove_rule"), dltime=dltime):
                         log.info("【BRUSH】%s 下载耗时达到删种条件，删除下载任务..." % torrent.get('name'))
                         if torrent_id not in delete_ids:
                             delete_ids.append(torrent_id)
                             update_torrents.append((uploaded, torrent_id))
-                # 开始删种
-                if delete_ids:
-                    downloader.delete_torrents(delete_file=True, ids=delete_ids)
-
             else:
                 # 检查完成状态
                 downloader = Transmission(user_config=downloader_cfg)
@@ -282,20 +279,20 @@ class BrushTask(object):
                     dltime = (datetime.now().astimezone() - torrent.date_added).seconds
                     # 上传量
                     uploaded = int(torrent.total_size * torrent.ratio)
+                    total_uploaded += uploaded
                     if self.__check_remove_rule(remove_rule=taskinfo.get("remove_rule"),
                                                 dltime=dltime):
                         log.info("【BRUSH】%s 下载耗时达到删种条件，删除下载任务..." % torrent.get('name'))
                         if torrent_id not in delete_ids:
                             delete_ids.append(torrent_id)
                             update_torrents.append((uploaded, torrent_id))
-                # 删除种子
-                if delete_ids:
-                    downloader.delete_torrents(delete_file=True, ids=delete_ids)
             # 更新上传量和删除种子数
             add_brushtask_upload_count(brush_id=taskid, size=total_uploaded, count=len(delete_ids))
             # 更新种子状态
             update_brushtask_torrent_state(update_torrents)
+            # 删除种子
             if delete_ids:
+                downloader.delete_torrents(delete_file=True, ids=delete_ids)
                 log.info("【BRUSH】任务 %s 共删除 %s 个刷流下载任务" % (task_name, len(delete_ids)))
 
     def __is_allow_new_torrent(self, taskid, taskname, downloadercfg, seedsize, dlcount):
@@ -375,7 +372,7 @@ class BrushTask(object):
         :param taskname: 任务名称
         """
         if not downloadercfg:
-            return
+            return False
         # 标签
         tag = "已整理" if not transfer else None
         # 下载任务ID
@@ -386,7 +383,7 @@ class BrushTask(object):
             downloader = Qbittorrent(user_config=downloadercfg)
             if not downloader.qbc:
                 log.error("【BRUSH】任务 %s 下载器 %s 无法连接" % (taskname, downloadercfg.get("name")))
-                return
+                return False
             torrent_tag = str(round(datetime.now().timestamp()))
             if tag:
                 tag = [tag, torrent_tag]
@@ -410,7 +407,7 @@ class BrushTask(object):
             downloader = Transmission(user_config=downloadercfg)
             if not downloader.trc:
                 log.error("【BRUSH】任务 %s 下载器 %s 无法连接" % (taskname, downloadercfg.get("name")))
-                return
+                return False
             ret = downloader.add_torrent(content=enclosure, mtype=None)
             if ret:
                 download_id = ret.id
@@ -418,7 +415,7 @@ class BrushTask(object):
                     downloader.set_torrent_tag(tid=download_id, tag=tag)
         if not download_id:
             log.warn("【BRUSH】%s 添加下载任务出错" % title)
-            return
+            return False
         else:
             log.info("【BRUSH】成功添加下载：%s" % title)
         # 插入种子数据
@@ -432,6 +429,8 @@ class BrushTask(object):
             add_brushtask_download_count(brush_id=taskid, size=size)
         else:
             log.info("【BRUSH】%s 已下载过" % title)
+
+        return True
 
     @staticmethod
     def __check_rss_rule(rss_rule, title, description, torrent_url, torrent_size, cookie):
