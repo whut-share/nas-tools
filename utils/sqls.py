@@ -997,7 +997,7 @@ def insert_download_history(media_info: MetaBase):
 
 
 # 查询下载历史
-def get_download_history(date=None, hid=None, num=200):
+def get_download_history(date=None, hid=None, num=30, page=1):
     if hid:
         sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY WHERE ID = ?"
         return select_by_sql(sql, (hid,))
@@ -1005,8 +1005,9 @@ def get_download_history(date=None, hid=None, num=200):
         sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY WHERE DATE > ? ORDER BY DATE DESC"
         return select_by_sql(sql, (date,))
     else:
-        sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY ORDER BY DATE DESC LIMIT ?"
-        return select_by_sql(sql, (num,))
+        offset = (int(page)-1) * int(num)
+        sql = "SELECT ID,TITLE,YEAR,TYPE,TMDBID,VOTE,POSTER,OVERVIEW,TORRENT,ENCLOSURE,DESC,DATE,SITE FROM DOWNLOAD_HISTORY ORDER BY DATE DESC LIMIT ? OFFSET ?"
+        return select_by_sql(sql, (num, offset))
 
 
 # 根据标题和年份检查是否下载过
@@ -1219,7 +1220,7 @@ def is_brushtask_torrent_exists(brush_id, title, enclosure):
 def update_brushtask_torrent_state(ids: list):
     if not ids:
         return
-    sql = "UPDATE SITE_BRUSH_TORRENTS SET TORRENT_SIZE = ?, DOWNLOAD_ID = '0' WHERE ID = ?"
+    sql = "UPDATE SITE_BRUSH_TORRENTS SET TORRENT_SIZE = ?, DOWNLOAD_ID = '0' WHERE TASK_ID = ? AND DOWNLOAD_ID = ?"
     return update_by_sql_batch(sql, ids)
 
 
