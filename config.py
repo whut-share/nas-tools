@@ -63,15 +63,15 @@ TORRENT_SEARCH_PARAMS = {
     },
     "pix": {
         "8k": r"8K",
-        "4k": r"4K|2160K",
+        "4k": r"4K|2160P",
         "1080p": r"1080[PIX]",
         "720p": r"720P"
     }
 }
 # 电影默认命名格式
-DEFAULT_MOVIE_FORMAT = '{title} ({year})/{title}-{part} ({year}) - {videoFormat}'
+DEFAULT_MOVIE_FORMAT = '{title} ({year})/{title} ({year})-{part} - {videoFormat}'
 # 电视剧默认命名格式
-DEFAULT_TV_FORMAT = '{title} ({year})/Season {season}/{title}-{part} - {season_episode} - 第 {episode} 集'
+DEFAULT_TV_FORMAT = '{title} ({year})/Season {season}/{title} - {season_episode}-{part} - 第 {episode} 集'
 
 lock = Lock()
 

@@ -31,7 +31,7 @@ from rmt.metainfo import MetaInfo
 from service.run import stop_scheduler, stop_monitor, restart_scheduler, restart_monitor
 from service.scheduler import Scheduler
 from service.sync import Sync
-from utils.commons import EpisodeFormat
+from utils.commons import EpisodeFormat, ProcessHandler
 from utils.functions import *
 from utils.http_utils import RequestUtils
 from utils.meta_helper import MetaHelper
@@ -102,7 +102,11 @@ class WebAction:
             "get_site_activity": self.__get_site_activity,
             "get_site_history": self.__get_site_history,
             "get_recommend": self.get_recommend,
-            "get_downloaded": self.get_downloaded
+            "get_downloaded": self.get_downloaded,
+            "get_site_seeding_info": self.__get_site_seeding_info,
+            "clear_tmdb_cache": self.__clear_tmdb_cache,
+            "check_site_attr": self.__check_site_attr,
+            "refresh_process": self.__refresh_process
         }
 
     def action(self, cmd, data):
@@ -602,9 +606,6 @@ class WebAction:
         """
         检查新版本
         """
-        version = ""
-        info = ""
-        code = 0
         try:
             response = RequestUtils(proxies=self.config.get_proxies()).get_res(
                 "https://api.github.com/repos/jxxghp/nas-tools/releases/latest")
@@ -612,10 +613,10 @@ class WebAction:
                 ver_json = response.json()
                 version = ver_json["tag_name"]
                 info = f'<a href="{ver_json["html_url"]}" target="_blank">{version}</a>'
+                return {"code": 0, "version": version, "info": info}
         except Exception as e:
-            log.console(str(e))
-            code = -1
-        return {"code": code, "version": version, "info": info}
+            print(str(e))
+        return {"code": -1, "version": "", "info": ""}
 
     @staticmethod
     def __update_site(data):
@@ -1466,6 +1467,20 @@ class WebAction:
         return resp
 
     @staticmethod
+    def __get_site_seeding_info(data):
+        """
+        查询site 做种分布信息 大小，做种数
+        :param data: {"name":site_name}
+        :return:
+        """
+        if not data or "name" not in data:
+            return {"code": 1, "msg": "查询参数错误"}
+
+        resp = {"code": 0}
+        resp.update(Sites().get_pt_site_seeding_info(data["name"]))
+        return resp
+
+    @staticmethod
     def __add_filtergroup(data):
         """
         新增规则组
@@ -1709,3 +1724,43 @@ class WebAction:
                     % (rule_filter_string.get(dltimes[0]), dltimes[1]))
 
         return "<br>".join(rule_htmls)
+
+    @staticmethod
+    def __clear_tmdb_cache(data):
+        """
+        清空TMDB缓存
+        """
+        try:
+            MetaHelper().clear_meta_data()
+            os.remove(MetaHelper().get_meta_data_path())
+        except Exception as e:
+            return {"code": 0, "msg": str(e)}
+        return {"code": 0}
+
+    @staticmethod
+    def __check_site_attr(data):
+        """
+        检查站点标识
+        """
+        url = data.get("url")
+        url_host = parse.urlparse(url).netloc
+        site_free = site_2xfree = site_hr = False
+        if url_host in RSS_SITE_GRAP_CONF.keys():
+            if RSS_SITE_GRAP_CONF[url_host].get("FREE"):
+                site_free = True
+            if RSS_SITE_GRAP_CONF[url_host].get("2XFREE"):
+                site_2xfree = True
+            if RSS_SITE_GRAP_CONF[url_host].get("HR"):
+                site_hr = True
+        return {"code": 0, "site_free": site_free, "site_2xfree": site_2xfree, "site_hr": site_hr}
+
+    @staticmethod
+    def __refresh_process(data):
+        """
+        刷新进度条
+        """
+        detail = ProcessHandler().get_process()
+        if detail:
+            return {"code": 0, "value": detail.get("value"), "text": detail.get("text")}
+        else:
+            return {"code": 1}
