@@ -175,18 +175,18 @@ class FileTransfer:
             lock.acquire()
             if self.__system == OsType.WINDOWS:
                 if rmt_mode == RmtMode.LINK:
-                    if os.path.splitext(target_file)[-1].lower() in RMT_MEDIAEXT:
-                        tmp = "/data/media/unknown/%s" % os.path.basename(target_file)
-                        retcode = os.system('ln %s %s ; mv %s %s' % (file_item, tmp, tmp, target_file))
-                    else:
-                        retcode = call(['ln', file_item, target_file])
+                    retcode = os.system('mklink /H "%s" "%s"' % (target_file, file_item))
                 elif rmt_mode == RmtMode.SOFTLINK:
                     retcode = os.system('mklink "%s" "%s"' % (target_file, file_item))
                 else:
                     retcode = os.system('copy /Y "%s" "%s"' % (file_item, target_file))
             else:
                 if rmt_mode == RmtMode.LINK:
-                    retcode = call(['ln', file_item, target_file])
+                    if os.path.splitext(target_file)[-1].lower() in RMT_MEDIAEXT:
+                        tmp = "/data/media/unknown/%s" % os.path.basename(target_file)
+                        retcode = os.system('ln %s %s ; mv %s %s' % (file_item, tmp, tmp, target_file))
+                    else:
+                        retcode = call(['ln', file_item, target_file])
                 elif rmt_mode == RmtMode.SOFTLINK:
                     retcode = call(['ln', '-s', file_item, target_file])
                 else:
