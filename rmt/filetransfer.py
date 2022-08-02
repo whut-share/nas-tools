@@ -1,5 +1,6 @@
 import argparse
 import os
+import platform
 import re
 import traceback
 from enum import Enum
@@ -182,8 +183,8 @@ class FileTransfer:
                     retcode = os.system('copy /Y "%s" "%s"' % (file_item, target_file))
             else:
                 if rmt_mode == RmtMode.LINK:
-                    if os.path.splitext(target_file)[-1].lower() in RMT_MEDIAEXT:
-                        tmp = "/data/media/unknown/%s" % os.path.basename(target_file)
+                    if platform.release().find("-z4-") and os.path.splitext(target_file)[-1].lower() in RMT_MEDIAEXT:
+                        tmp = "%s/%s" % (os.path.dirname(os.path.dirname(target_file)), os.path.basename(target_file))
                         # log.info('ln %s %s ; mv %s %s' % (file_item, tmp, tmp, target_file))
                         retcode = os.system('ln "%s" "%s" ; mv "%s" "%s"' % (file_item, tmp, tmp, target_file))
                     else:
