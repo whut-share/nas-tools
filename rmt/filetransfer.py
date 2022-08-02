@@ -184,8 +184,8 @@ class FileTransfer:
                 if rmt_mode == RmtMode.LINK:
                     if os.path.splitext(target_file)[-1].lower() in RMT_MEDIAEXT:
                         tmp = "/data/media/unknown/%s" % os.path.basename(target_file)
-                        log.info('ln %s %s ; mv %s %s' % (file_item, tmp, tmp, target_file))
-                        retcode = os.system('ln %s %s ; mv %s %s' % (file_item, tmp, tmp, target_file))
+                        # log.info('ln %s %s ; mv %s %s' % (file_item, tmp, tmp, target_file))
+                        retcode = os.system('ln "%s" "%s" ; mv "%s" "%s"' % (file_item, tmp, tmp, target_file))
                     else:
                         retcode = call(['ln', file_item, target_file])
                 elif rmt_mode == RmtMode.SOFTLINK:
