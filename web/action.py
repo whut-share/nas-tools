@@ -319,32 +319,31 @@ class WebAction:
         dl_id = data.get("id")
         results = get_search_result_by_id(dl_id)
         for res in results:
-            if res[7] == "TV":
-                mtype = MediaType.TV
-            elif res[7] == "MOV":
-                mtype = MediaType.MOVIE
-            else:
-                mtype = MediaType.ANIME
-            msg_item = MetaInfo("%s" % res[8])
-            msg_item.type = mtype
-            msg_item.size = res[10]
-            msg_item.enclosure = res[0]
-            msg_item.site = res[14]
-            msg_item.upload_volume_factor = float(res[15] or 1.0)
-            msg_item.download_volume_factor = float(res[16] or 1.0)
             if res[11] and str(res[11]) != "0":
+                msg_item = MetaInfo("%s" % res[8])
+                if res[7] == "TV":
+                    mtype = MediaType.TV
+                elif res[7] == "MOV":
+                    mtype = MediaType.MOVIE
+                else:
+                    mtype = MediaType.ANIME
+                msg_item.type = mtype
                 msg_item.tmdb_id = res[11]
                 msg_item.title = res[1]
                 msg_item.vote_average = res[5]
                 msg_item.poster_path = res[6]
-                msg_item.description = res[9]
                 msg_item.poster_path = res[12]
                 msg_item.overview = res[13]
             else:
-                tmdbinfo = Media().get_tmdb_info(mtype=mtype, title=msg_item.get_name(), year=msg_item.year)
-                msg_item.set_tmdb_info(tmdbinfo)
+                msg_item = Media().get_media_info(title=res[8], subtitle=res[9])
+            msg_item.enclosure = res[0]
+            msg_item.description = res[9]
+            msg_item.size = res[10]
+            msg_item.site = res[14]
+            msg_item.upload_volume_factor = float(res[15] or 1.0)
+            msg_item.download_volume_factor = float(res[16] or 1.0)
             # 添加下载
-            ret, ret_msg = Downloader().add_pt_torrent(res[0], mtype)
+            ret, ret_msg = Downloader().add_pt_torrent(res[0], msg_item.type)
             if ret:
                 # 发送消息
                 Message().send_download_message(SearchType.WEB, msg_item)
@@ -1279,6 +1278,7 @@ class WebAction:
         brushtask_seedratio = data.get("brushtask_seedratio")
         brushtask_seedsize = data.get("brushtask_seedsize")
         brushtask_dltime = data.get("brushtask_dltime")
+        brushtask_avg_upspeed = data.get("brushtask_avg_upspeed")
         # 选种规则
         rss_rule = {
             "free": brushtask_free,
@@ -1293,7 +1293,8 @@ class WebAction:
             "time": brushtask_seedtime,
             "ratio": brushtask_seedratio,
             "uploadsize": brushtask_seedsize,
-            "dltime": brushtask_dltime
+            "dltime": brushtask_dltime,
+            "avg_upspeed": brushtask_avg_upspeed
         }
         # 添加记录
         item = {
@@ -1409,6 +1410,7 @@ class WebAction:
             "title": media_info.title,
             "year": media_info.year,
             "season_episode": media_info.get_season_episode_string(),
+            "part": media_info.part,
             "tmdbid": media_info.tmdb_id,
             "category": media_info.category,
             "restype": media_info.resource_type,
@@ -1722,6 +1724,12 @@ class WebAction:
                 rule_htmls.append(
                     '<span class="badge badge-outline text-orange me-1 mb-1" title="下载耗时">下载耗时%s: %s 小时</span>'
                     % (rule_filter_string.get(dltimes[0]), dltimes[1]))
+        if rules.get("avg_upspeed"):
+            avg_upspeeds = rules.get("avg_upspeed").split("#")
+            if avg_upspeeds[0]:
+                rule_htmls.append(
+                    '<span class="badge badge-outline text-orange me-1 mb-1" title="平均上传速度">平均上传速度%s: %s KB/S</span>'
+                    % (rule_filter_string.get(avg_upspeeds[0]), avg_upspeeds[1]))
 
         return "<br>".join(rule_htmls)
 

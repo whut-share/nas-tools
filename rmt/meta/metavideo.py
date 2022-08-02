@@ -55,7 +55,9 @@ class MetaVideo(MetaBase):
         # 把xxxx-xxxx年份换成前一个年份，常出现在季集上
         title = re.sub(r'([\s.]+)(\d{4})-(\d{4})', r'\1\2', title)
         # 把大小去掉
-        title = re.sub(r'[0-9.]+\s*[MGT]i?B', "", title, flags=re.IGNORECASE)
+        title = re.sub(r'[0-9.]+\s*[MGT]i?B(?![A-Z]+)', "", title, flags=re.IGNORECASE)
+        # 把年月日去掉
+        title = re.sub(r'\d{4}[\s._-]\d{1,2}[\s._-]\d{1,2}', "", title)
         # 拆分tokens
         tokens = Tokens(title)
         self.tokens = tokens
@@ -282,7 +284,8 @@ class MetaVideo(MetaBase):
                     and self.end_season is None \
                     and len(token) < 3 \
                     and int(token) > self.begin_season \
-                    and self._last_token_type == "season":
+                    and self._last_token_type == "season"\
+                    and (not self.tokens.cur() or not self.tokens.cur().isdigit()):
                 self.end_season = int(token)
                 self.total_seasons = (self.end_season - self.begin_season) + 1
                 self._continue_flag = False

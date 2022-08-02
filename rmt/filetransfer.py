@@ -54,6 +54,7 @@ class FileTransfer:
     __tv_season_rmt_format = ""
     __tv_file_rmt_format = ""
     __nfo_poster = False
+    __refresh_mediaserver = False
 
     def __init__(self):
         self.media = Media()
@@ -71,6 +72,8 @@ class FileTransfer:
         if media:
             # NFO开关
             self.__nfo_poster = media.get("nfo_poster")
+            # 刷新媒体库开关
+            self.__refresh_mediaserver = media.get("refresh_mediaserver")
             # 电影目录
             self.__movie_path = media.get('movie_path')
             if not isinstance(self.__movie_path, list):
@@ -211,6 +214,10 @@ class FileTransfer:
                 sub_metainfo = MetaInfo(title=os.path.basename(file_item))
                 if (sub_metainfo.cn_name and sub_metainfo.cn_name == metainfo.cn_name) \
                         or (sub_metainfo.en_name and sub_metainfo.en_name == metainfo.en_name):
+                    if metainfo.get_season_string() and metainfo.get_season_string() != sub_metainfo.get_season_string():
+                        continue
+                    if metainfo.get_episode_string() and metainfo.get_episode_string() != sub_metainfo.get_episode_string():
+                        continue
                     file_ext = os.path.splitext(file_item)[-1]
                     sub_language = os.path.split(".")[-2]
                     if sub_language and (sub_language.lower() in ["zh-cn", "zh", "zh_CN", "chs", "cht"]
@@ -670,7 +677,7 @@ class FileTransfer:
         if message_medias:
             self.message.send_transfer_tv_message(message_medias, in_from)
         # 刷新媒体库
-        if refresh_library_items:
+        if refresh_library_items and self.__refresh_mediaserver:
             self.mediaserver.refresh_library_by_items(refresh_library_items)
         # 启新进程下载字幕
         if download_subtitle_items:

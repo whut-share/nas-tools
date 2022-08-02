@@ -29,8 +29,15 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
                 self.userid = None
                 self._torrent_seeding_page = None
 
-        if not self._user_detail_page:
-            self.err_msg = "获取不到用户信息，请检查cookies是否过期"
+        html = etree.HTML(html_text)
+        if not html:
+            self.err_msg = "未检测到已登陆，请检查cookies是否过期"
+            return
+
+        logout = html.xpath('//a[contains(@href, "logout") or contains(@data-url, "logout")'
+                            ' or contains(@onclick, "logout") or contains(@href, "usercp")]')
+        if not logout:
+            self.err_msg = "未检测到已登陆，请检查cookies是否过期"
 
     def _parse_user_base_info(self, html_text):
         # 合并解析，减少额外请求调用
@@ -38,7 +45,8 @@ class NexusPhpSiteUserInfo(ISiteUserInfo):
         self._user_traffic_page = None
 
         html_text = self._prepare_html_text(html_text)
-        user_name = re.search(r"userdetails.php\?id=\d+[a-zA-Z\"'=_\-\s]+>[<b>\s]*([^<>]*)[</b>]*</a>", html_text)
+        user_name = re.search(r"userdetails.php\?id=\d+[a-zA-Z\"'=()\u4E00-\u9FA5_\-\s]+>[<b>\s]*([^<>]*)[</b>]*</a>",
+                              html_text)
         if user_name and user_name.group(1).strip():
             self.username = user_name.group(1).strip()
             return
