@@ -2,6 +2,7 @@ import argparse
 import os
 import platform
 import re
+import shutil
 import traceback
 from enum import Enum
 from threading import Lock
@@ -138,32 +139,16 @@ class FileTransfer:
                 if len(tv_formats) > 2:
                     self.__tv_file_rmt_format = tv_formats[2]
         # 转移模式
-        sync = config.get_config('sync')
-        if sync:
-            rmt_mode = sync.get('sync_mod')
-            if rmt_mode:
-                rmt_mode = rmt_mode.upper()
-            else:
-                rmt_mode = "COPY"
-            if rmt_mode == "LINK":
-                self.__sync_rmt_mode = RmtMode.LINK
-            elif rmt_mode == "SOFTLINK":
-                self.__sync_rmt_mode = RmtMode.SOFTLINK
-            else:
-                self.__sync_rmt_mode = RmtMode.COPY
-        pt = config.get_config('pt')
-        if pt:
-            rmt_mode = pt.get('rmt_mode')
-            if rmt_mode:
-                rmt_mode = rmt_mode.upper()
-            else:
-                rmt_mode = "COPY"
-            if rmt_mode == "LINK":
-                self.__pt_rmt_mode = RmtMode.LINK
-            elif rmt_mode == "SOFTLINK":
-                self.__pt_rmt_mode = RmtMode.SOFTLINK
-            else:
-                self.__pt_rmt_mode = RmtMode.COPY
+        sync_mode_dict = {
+            "copy": RmtMode.COPY,
+            "link": RmtMode.LINK,
+            "softlink": RmtMode.SOFTLINK,
+            "move": RmtMode.MOVE
+        }
+        sync_mod = config.get_config('sync').get('sync_mod')
+        self.__sync_rmt_mode = sync_mode_dict.get(sync_mod, RmtMode.COPY) if sync_mod else RmtMode.COPY
+        rmt_mode = config.get_config('pt').get('rmt_mode')
+        self.__pt_rmt_mode = sync_mode_dict.get(rmt_mode, RmtMode.COPY) if rmt_mode else RmtMode.COPY
 
     def __transfer_command(self, file_item, target_file, rmt_mode):
         """
@@ -179,11 +164,13 @@ class FileTransfer:
                     retcode = os.system('mklink /H "%s" "%s"' % (target_file, file_item))
                 elif rmt_mode == RmtMode.SOFTLINK:
                     retcode = os.system('mklink "%s" "%s"' % (target_file, file_item))
+                elif rmt_mode == RmtMode.MOVE:
+                    retcode = os.system('move "%s" "%s"' % (target_file, file_item))
                 else:
                     retcode = os.system('copy /Y "%s" "%s"' % (file_item, target_file))
             else:
                 if rmt_mode == RmtMode.LINK:
-                    if platform.release().find("-z4-") and os.path.splitext(target_file)[-1].lower() in RMT_MEDIAEXT:
+                    if platform.release().find("-z4-") >= 0 and os.path.splitext(target_file)[-1].lower() in RMT_MEDIAEXT:
                         tmp = "%s/%s" % (os.path.dirname(os.path.dirname(target_file)), os.path.basename(target_file))
                         # log.info('ln %s %s ; mv %s %s' % (file_item, tmp, tmp, target_file))
                         retcode = os.system('ln "%s" "%s" ; mv "%s" "%s"' % (file_item, tmp, tmp, target_file))
@@ -191,6 +178,8 @@ class FileTransfer:
                         retcode = call(['ln', file_item, target_file])
                 elif rmt_mode == RmtMode.SOFTLINK:
                     retcode = call(['ln', '-s', file_item, target_file])
+                elif rmt_mode == RmtMode.MOVE:
+                    retcode = call(['mv', file_item, target_file])
                 else:
                     retcode = call(['cp', file_item, target_file])
         finally:
@@ -688,6 +677,14 @@ class FileTransfer:
         log.info("【RMT】%s 处理完成，总数：%s，失败：%s" % (in_path, total_count, failed_count))
         if alert_count > 0:
             self.message.sendmsg(title="%s 有 %s 个文件转移失败，请登录NASTool查看" % (in_path, alert_count))
+        else:
+            # 删除空目录
+            if rmt_mode == RmtMode.MOVE \
+                    and os.path.exists(in_path) \
+                    and os.path.isdir(in_path) \
+                    and not get_dir_files(in_path):
+                log.info("【RMT】移动模式下删除空目录：%s" % in_path)
+                shutil.rmtree(in_path)
         return success_flag, error_message
 
     def transfer_manually(self, s_path, t_path):
