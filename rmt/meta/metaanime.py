@@ -2,6 +2,7 @@ import re
 
 import anitopy
 import log
+from pt.torrent import Torrent
 from rmt.meta.metabase import MetaBase
 from utils.functions import is_chinese, is_all_chinese
 from utils.types import MediaType
@@ -51,7 +52,7 @@ class MetaAnime(MetaBase):
                         self.en_name = "%s%s" % (self.en_name or "", word)
                         lastword_type = "en"
                 if self.cn_name:
-                    self.cn_name = self.cn_name.strip()
+                    _, self.cn_name, _, _, _, _ = Torrent.get_keyword_from_string(self.cn_name)
                 if self.en_name:
                     self.en_name = self.en_name.strip()
                 # 年份
@@ -123,6 +124,10 @@ class MetaAnime(MetaBase):
                 self.audio_encode = anitopy_info.get("audio_term")
                 if isinstance(self.audio_encode, list):
                     self.audio_encode = self.audio_encode[0]
+                # 解析副标题，只要季和集
+                self.init_subtitle(title)
+                if not self._subtitle_flag and subtitle:
+                    self.init_subtitle(subtitle)
             if not self.type:
                 self.type = MediaType.TV
         except Exception as e:

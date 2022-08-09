@@ -555,11 +555,11 @@ def get_rss_tv_sites(rssid):
 
 
 # 更新订阅电影的TMDBID
-def update_rss_tv_tmdb(rid, tmdbid, title, year, total, image):
+def update_rss_tv_tmdb(rid, tmdbid, title, year, total, lack, image):
     if not tmdbid:
         return False
-    sql = "UPDATE RSS_TVS SET TMDBID = ?, NAME = ?, YEAR = ?, TOTAL = ?, IMAGE = ? WHERE ID = ?"
-    return update_by_sql(sql, (tmdbid, str_sql(title), year, total, str_sql(image), rid))
+    sql = "UPDATE RSS_TVS SET TMDBID = ?, NAME = ?, YEAR = ?, TOTAL = ?, LACK = ?, IMAGE = ? WHERE ID = ?"
+    return update_by_sql(sql, (tmdbid, str_sql(title), year, total, lack, str_sql(image), rid))
 
 
 # 判断RSS电视剧是否存在
@@ -1314,21 +1314,23 @@ def delete_filterrule(ruleid):
 def insert_filter_rule(ruleid, item):
     if ruleid:
         sql = "UPDATE CONFIG_FILTER_RULES " \
-              "SET ROLE_NAME=?,PRIORITY=?,INCLUDE=?,EXCLUDE=?,SIZE_LIMIT=? " \
+              "SET ROLE_NAME=?,PRIORITY=?,INCLUDE=?,EXCLUDE=?,SIZE_LIMIT=?,NOTE=?" \
               "WHERE ID=?"
         return update_by_sql(sql, (item.get("name"),
                                    item.get("pri"),
                                    item.get("include"),
                                    item.get("exclude"),
                                    item.get("size"),
+                                   item.get("free"),
                                    ruleid))
     else:
         sql = "INSERT INTO CONFIG_FILTER_RULES " \
-              "(GROUP_ID, ROLE_NAME, PRIORITY, INCLUDE, EXCLUDE, SIZE_LIMIT)" \
-              "VALUES (?, ?, ?, ?, ?, ?)"
+              "(GROUP_ID, ROLE_NAME, PRIORITY, INCLUDE, EXCLUDE, SIZE_LIMIT, NOTE)" \
+              "VALUES (?, ?, ?, ?, ?, ?, ?)"
         return update_by_sql(sql, (item.get("group"),
                                    item.get("name"),
                                    item.get("pri"),
                                    item.get("include"),
                                    item.get("exclude"),
-                                   item.get("size")))
+                                   item.get("size"),
+                                   item.get("free")))
