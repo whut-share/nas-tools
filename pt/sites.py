@@ -42,7 +42,9 @@ class Sites:
         """
         ret_sites = []
         for site in self.__pt_sites:
-            # 站点过滤规则为|分隔的第2位，第1位暂时未使用
+            # 是否解析种子详情为|分隔的第1位
+            site_parse = str(site[9]).split("|")[0] or "Y"
+            # 站点过滤规则为|分隔的第2位
             rule_groupid = str(site[9]).split("|")[1] if site[9] and len(str(site[9]).split("|")) > 1 else ""
             if rule_groupid:
                 rule_name = self.filtersites.get_rule_groups(rule_groupid).get("name") or ""
@@ -56,7 +58,8 @@ class Sites:
                 "signurl": site[4],
                 "cookie": site[5],
                 "rule": rule_groupid,
-                "rule_name": rule_name
+                "rule_name": rule_name,
+                "parse": site_parse
             }
             if siteid and int(site[0]) == int(siteid):
                 return site_info
@@ -186,7 +189,7 @@ class Sites:
                             status.append("%s 签到失败，Cookie已过期" % pt_task)
                         else:
                             status.append("%s 签到成功" % pt_task)
-                    elif res.status_code:
+                    elif res and res.status_code:
                         status.append("%s 签到失败，状态码：%s" % (pt_task, res.status_code))
                     else:
                         status.append("%s 签到失败，无法打开网站" % pt_task)

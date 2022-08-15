@@ -1,4 +1,5 @@
 import importlib
+import os.path
 import signal
 from urllib import parse
 
@@ -16,6 +17,7 @@ from pt.client.transmission import Transmission
 from pt.douban import DouBan
 from pt.downloader import Downloader
 from pt.filterrules import FilterRule
+from pt.mediaserver.emby import Emby
 from pt.mediaserver.jellyfin import Jellyfin
 from pt.mediaserver.plex import Plex
 from pt.rss import Rss
@@ -106,7 +108,8 @@ class WebAction:
             "get_site_seeding_info": self.__get_site_seeding_info,
             "clear_tmdb_cache": self.__clear_tmdb_cache,
             "check_site_attr": self.__check_site_attr,
-            "refresh_process": self.__refresh_process
+            "refresh_process": self.__refresh_process,
+            "get_download_dirs": self.get_download_dirs
         }
 
     def action(self, cmd, data):
@@ -317,6 +320,7 @@ class WebAction:
         从WEB添加下载
         """
         dl_id = data.get("id")
+        dl_dir = data.get("dir")
         results = get_search_result_by_id(dl_id)
         for res in results:
             if res[11] and str(res[11]) != "0":
@@ -343,7 +347,7 @@ class WebAction:
             msg_item.upload_volume_factor = float(res[15] or 1.0)
             msg_item.download_volume_factor = float(res[16] or 1.0)
             # 添加下载
-            ret, ret_msg = Downloader().add_pt_torrent(res[0], msg_item.type)
+            ret, ret_msg = Downloader().add_pt_torrent(url=res[0], mtype=msg_item.type, download_dir=dl_dir)
             if ret:
                 # 发送消息
                 Message().send_download_message(SearchType.WEB, msg_item)
@@ -390,6 +394,8 @@ class WebAction:
         Client, Torrents = Downloader().get_torrents(torrent_ids=ids)
         DispTorrents = []
         for torrent in Torrents:
+            if not torrent:
+                continue
             if Client == DownloaderType.QB:
                 if torrent.get('state') in ['pausedDL']:
                     state = "Stoped"
@@ -404,6 +410,28 @@ class WebAction:
                 progress = round(torrent.get('progress') * 100)
                 # 主键
                 key = torrent.get('hash')
+            elif Client == DownloaderType.Client115:
+                state = "Downloading"
+                dlspeed = str_filesize(torrent.get('peers'))
+                upspeed = str_filesize(torrent.get('rateDownload'))
+                speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
+                # 进度
+                progress = round(torrent.get('percentDone'), 1)
+                # 主键
+                key = torrent.get('info_hash')
+            elif Client == DownloaderType.Aria2:
+                if torrent.get('status') != 'active':
+                    state = "Stoped"
+                    speed = "已暂停"
+                else:
+                    state = "Downloading"
+                    dlspeed = str_filesize(torrent.get('downloadSpeed'))
+                    upspeed = str_filesize(torrent.get('uploadSpeed'))
+                    speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
+                # 进度
+                progress = round(int(torrent.get('completedLength')) / int(torrent.get("totalLength")), 1) * 100
+                # 主键
+                key = torrent.get('gid')
             else:
                 if torrent.status in ['stopped']:
                     state = "Stoped"
@@ -724,6 +752,7 @@ class WebAction:
         # 重载配置标志
         config_test = False
         scheduler_reload = False
+        emby_reload = False
         jellyfin_reload = False
         plex_reload = False
         wechat_reload = False
@@ -740,6 +769,8 @@ class WebAction:
             if key in ['pt.ptsignin_cron', 'pt.pt_monitor', 'pt.pt_check_interval', 'pt.pt_seeding_time',
                        'douban.interval']:
                 scheduler_reload = True
+            if key.startswith("emby"):
+                emby_reload = True
             if key.startswith("jellyfin"):
                 jellyfin_reload = True
             if key.startswith("plex"):
@@ -759,6 +790,9 @@ class WebAction:
         if scheduler_reload:
             Scheduler().init_config()
             restart_scheduler()
+        # 重载emby
+        if emby_reload:
+            Emby().init_config()
         # 重载Jellyfin
         if jellyfin_reload:
             Jellyfin().init_config()
@@ -1771,3 +1805,21 @@ class WebAction:
             return {"code": 0, "value": detail.get("value"), "text": detail.get("text")}
         else:
             return {"code": 1}
+
+    @staticmethod
+    def get_download_dirs(data=None):
+        """
+        获取下载目录列表
+        """
+        dl_dirs = []
+        client_type = Config().get_config("pt").get("pt_client")
+        save_path = Config().get_config(client_type).get("save_path")
+        if save_path:
+            if isinstance(save_path, str):
+                dl_dirs.append(os.path.normpath(save_path))
+            else:
+                for path in dict(save_path).values():
+                    if not path:
+                        continue
+                    dl_dirs.append(os.path.normpath(path.split("|")[0]))
+        return [x.replace("\\", "/") for x in list(set(Sync().get_sync_dirs()).union(set(dl_dirs)))]

@@ -452,6 +452,9 @@ def create_flask_app(config):
         Indexers = Searcher().indexer.get_indexers() or []
         for item in Indexers:
             SiteDict.append(item[1])
+
+        # 下载目录
+        SaveDirs = WebAction().get_download_dirs()
         return render_template("search.html",
                                UserPris=str(pris).split(","),
                                SearchWord=SearchWord or "",
@@ -466,7 +469,9 @@ def create_flask_app(config):
                                MediaRestypes=MediaRestypes,
                                RestypeDict=TORRENT_SEARCH_PARAMS.get("restype").keys(),
                                PixDict=TORRENT_SEARCH_PARAMS.get("pix").keys(),
-                               SiteDict=SiteDict)
+                               SiteDict=SiteDict,
+                               SaveDirs=SaveDirs,
+                               UPCHAR=chr(8593))
 
     # 媒体列表页面
     @App.route('/medialist', methods=['POST', 'GET'])
@@ -538,7 +543,8 @@ def create_flask_app(config):
     def rss_calendar():
         Today = datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d')
         RssMovieIds = [movie[2] for movie in get_rss_movies()]
-        RssTvItems = [{"id": tv[3], "season": int(str(tv[2]).replace("S", "")), "name": tv[0]} for tv in get_rss_tvs() if tv[2]]
+        RssTvItems = [{"id": tv[3], "season": int(str(tv[2]).replace("S", "")), "name": tv[0]} for tv in get_rss_tvs()
+                      if tv[2]]
         return render_template("rss/rss_calendar.html",
                                Today=Today,
                                RssMovieIds=RssMovieIds,
@@ -592,6 +598,26 @@ def create_flask_app(config):
                         speed = "%s%sB/s %s%sB/s %s" % (chr(8595), dlspeed, chr(8593), upspeed, eta)
                 # 主键
                 key = torrent.get('hash')
+            elif Client == DownloaderType.Client115:
+                name = torrent.get('name')
+                # 进度
+                progress = round(torrent.get('percentDone'), 1)
+                state = "Downloading"
+                dlspeed = str_filesize(torrent.get('peers'))
+                upspeed = str_filesize(torrent.get('rateDownload'))
+                speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
+                # 主键
+                key = torrent.get('info_hash')
+            elif Client == DownloaderType.Aria2:
+                name = torrent.get('bittorrent', {}).get('info', {}).get("name")
+                # 进度
+                progress = round(int(torrent.get('completedLength'))/int(torrent.get("totalLength")), 1) * 100
+                state = "Downloading"
+                dlspeed = str_filesize(torrent.get('downloadSpeed'))
+                upspeed = str_filesize(torrent.get('uploadSpeed'))
+                speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
+                # 主键
+                key = torrent.get('gid')
             else:
                 name = torrent.name
                 if torrent.status in ['stopped']:
@@ -630,7 +656,8 @@ def create_flask_app(config):
 
         return render_template("download/downloading.html",
                                DownloadCount=DownloadCount,
-                               Torrents=DispTorrents)
+                               Torrents=DispTorrents,
+                               Client=config.get_config("pt").get("pt_client"))
 
     # 近期下载页面
     @App.route('/downloaded', methods=['POST', 'GET'])
@@ -875,7 +902,8 @@ def create_flask_app(config):
                 </svg>
                 '''
                 scheduler_cfg_list.append(
-                    {'name': '豆瓣想看', 'time': interval, 'state': sta_douban, 'id': 'douban', 'svg': svg, 'color': "pink"})
+                    {'name': '豆瓣想看', 'time': interval, 'state': sta_douban, 'id': 'douban', 'svg': svg,
+                     'color': "pink"})
 
         # 清理文件整理缓存
         svg = '''
@@ -1037,7 +1065,9 @@ def create_flask_app(config):
         for rec in Records:
             if not rec[1]:
                 continue
-            Items.append({"id": rec[0], "path": rec[1], "to": rec[2], "name": rec[1]})
+            path = rec[1].replace("\\", "/") if rec[1] else ""
+            path_to = rec[2].replace("\\", "/") if rec[2] else ""
+            Items.append({"id": rec[0], "path": path, "to": path_to, "name": path})
         return render_template("rename/unidentification.html",
                                TotalCount=TotalCount,
                                Items=Items)
@@ -1116,7 +1146,7 @@ def create_flask_app(config):
     def downloader():
         # Qbittorrent
         qbittorrent = config.get_config('qbittorrent')
-        save_path = qbittorrent.get("save_path")
+        save_path = qbittorrent.get("save_path", {})
         if isinstance(save_path, str):
             paths = save_path.split("|")
             if len(paths) > 1:
@@ -1169,7 +1199,7 @@ def create_flask_app(config):
                 path = ""
                 tag = ""
             QbAnimeSavePath = {"path": path, "tag": tag}
-        contianer_path = qbittorrent.get('save_containerpath')
+        contianer_path = qbittorrent.get('save_containerpath', {})
         if isinstance(contianer_path, str):
             QbMovieContainerPath = QbTvContainerPath = QbAnimeContainerPath = contianer_path
         else:
@@ -1182,14 +1212,14 @@ def create_flask_app(config):
 
         # Transmission
         transmission = config.get_config('transmission')
-        save_path = transmission.get("save_path")
+        save_path = transmission.get("save_path", {})
         if isinstance(save_path, str):
             TrMovieSavePath = TrTvSavePath = TrAnimeSavePath = save_path
         else:
             TrMovieSavePath = save_path.get("movie")
             TrTvSavePath = save_path.get("tv")
             TrAnimeSavePath = save_path.get("anime")
-        contianer_path = transmission.get('save_containerpath')
+        contianer_path = transmission.get('save_containerpath', {})
         if isinstance(contianer_path, str):
             TrMovieContainerPath = TrTvContainerPath = TrAnimeContainerPath = contianer_path
         else:
@@ -1200,20 +1230,72 @@ def create_flask_app(config):
             else:
                 TrMovieContainerPath = TrTvContainerPath = TrAnimeContainerPath = ""
 
+        # Cloudtorrent
+        client115 = config.get_config('client115')
+        save_path = client115.get("save_path", {})
+        if isinstance(save_path, str):
+            CloudMovieSavePath = CloudTvSavePath = CloudAnimeSavePath = save_path
+        else:
+            CloudMovieSavePath = save_path.get("movie")
+            CloudTvSavePath = save_path.get("tv")
+            CloudAnimeSavePath = save_path.get("anime")
+        contianer_path = client115.get('save_containerpath', {})
+        if isinstance(contianer_path, str):
+            CloudMovieContainerPath = CloudTvContainerPath = CloudAnimeContainerPath = contianer_path
+        else:
+            if contianer_path:
+                CloudMovieContainerPath = contianer_path.get("movie")
+                CloudTvContainerPath = contianer_path.get("tv")
+                CloudAnimeContainerPath = contianer_path.get("anime")
+            else:
+                CloudMovieContainerPath = CloudTvContainerPath = CloudAnimeContainerPath = ""
+
+        # Aria2
+        aria2 = config.get_config('aria2')
+        save_path = aria2.get("save_path", {})
+        if isinstance(save_path, str):
+            Aria2MovieSavePath = Aria2TvSavePath = Aria2AnimeSavePath = save_path
+        else:
+            Aria2MovieSavePath = save_path.get("movie")
+            Aria2TvSavePath = save_path.get("tv")
+            Aria2AnimeSavePath = save_path.get("anime")
+        contianer_path = aria2.get('save_containerpath', {})
+        if isinstance(contianer_path, str):
+            Aria2MovieContainerPath = Aria2TvContainerPath = Aria2AnimeContainerPath = contianer_path
+        else:
+            if contianer_path:
+                Aria2MovieContainerPath = contianer_path.get("movie")
+                Aria2TvContainerPath = contianer_path.get("tv")
+                Aria2AnimeContainerPath = contianer_path.get("anime")
+            else:
+                Aria2MovieContainerPath = Aria2TvContainerPath = Aria2AnimeContainerPath = ""
+
         return render_template("setting/downloader.html",
                                Config=config.get_config(),
                                QbMovieSavePath=QbMovieSavePath,
                                QbTvSavePath=QbTvSavePath,
                                QbAnimeSavePath=QbAnimeSavePath,
-                               TrMovieSavePath=TrMovieSavePath,
-                               TrTvSavePath=TrTvSavePath,
-                               TrAnimeSavePath=TrAnimeSavePath,
                                QbMovieContainerPath=QbMovieContainerPath,
                                QbTvContainerPath=QbTvContainerPath,
                                QbAnimeContainerPath=QbAnimeContainerPath,
+                               TrMovieSavePath=TrMovieSavePath,
+                               TrTvSavePath=TrTvSavePath,
+                               TrAnimeSavePath=TrAnimeSavePath,
                                TrMovieContainerPath=TrMovieContainerPath,
                                TrTvContainerPath=TrTvContainerPath,
-                               TrAnimeContainerPath=TrAnimeContainerPath)
+                               TrAnimeContainerPath=TrAnimeContainerPath,
+                               CloudMovieSavePath=CloudMovieSavePath,
+                               CloudTvSavePath=CloudTvSavePath,
+                               CloudAnimeSavePath=CloudAnimeSavePath,
+                               CloudMovieContainerPath=CloudMovieContainerPath,
+                               CloudTvContainerPath=CloudTvContainerPath,
+                               CloudAnimeContainerPath=CloudAnimeContainerPath,
+                               Aria2MovieSavePath=Aria2MovieSavePath,
+                               Aria2TvSavePath=Aria2TvSavePath,
+                               Aria2AnimeSavePath=Aria2AnimeSavePath,
+                               Aria2MovieContainerPath=Aria2MovieContainerPath,
+                               Aria2TvContainerPath=Aria2TvContainerPath,
+                               Aria2AnimeContainerPath=Aria2AnimeContainerPath)
 
     # 索引器页面
     @App.route('/indexer', methods=['POST', 'GET'])
