@@ -2,6 +2,7 @@ import log
 from config import Config
 from message.send import Message
 from pt.downloader import Downloader
+from pt.indexer.builtin import BuiltinIndexer
 from pt.indexer.jackett import Jackett
 from pt.indexer.prowlarr import Prowlarr
 from rmt.media import Media
@@ -29,8 +30,10 @@ class Searcher:
         self.__search_auto = config.get_config("pt").get('search_auto', True)
         if config.get_config("pt").get('search_indexer') == "prowlarr":
             self.indexer = Prowlarr()
-        else:
+        elif config.get_config("pt").get('search_indexer') == "jackett":
             self.indexer = Jackett()
+        else:
+            self.indexer = BuiltinIndexer()
 
     def search_medias(self, key_word, filter_args: dict, match_type, match_media: MetaBase = None):
         """
@@ -72,7 +75,7 @@ class Searcher:
         # 进度计数重置
         ProcessHandler().reset()
         # 查找的季
-        if not media_info.begin_season:
+        if media_info.begin_season is None:
             search_season = None
         else:
             search_season = media_info.get_season_list()

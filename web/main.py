@@ -3,10 +3,12 @@ import logging
 import os.path
 import traceback
 import urllib
+import sqlite3
+from pathlib import Path
 from math import floor
 from urllib import parse
 
-from flask import Flask, request, json, render_template, make_response, session, send_from_directory
+from flask import Flask, request, json, render_template, make_response, session, send_from_directory, send_file
 from flask_login import LoginManager, UserMixin, login_user, login_required, current_user
 from werkzeug.security import check_password_hash
 import xml.dom.minidom
@@ -14,13 +16,14 @@ import xml.dom.minidom
 import log
 from pt.douban import DouBan
 from pt.filterrules import FilterRule
+from pt.indexer.builtin import BuiltinIndexer
 from pt.sites import Sites
 from pt.downloader import Downloader
 from pt.searcher import Searcher
 from rmt.media import Media
 from pt.media_server import MediaServer
 from rmt.metainfo import MetaInfo
-from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, TORRENT_SEARCH_PARAMS
+from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, TORRENT_SEARCH_PARAMS, TMDB_IMAGE_W500_URL
 from utils.functions import *
 from utils.meta_helper import MetaHelper
 from utils.security import Security
@@ -28,7 +31,7 @@ from utils.sqls import *
 from utils.types import *
 from version import APP_VERSION
 from web.action import WebAction
-from web.backend.web_utils import get_random_discover_backdrop
+from web.backend.web_utils import get_login_wallpaper
 from web.backend.webhook_event import WebhookEvent
 from utils.WXBizMsgCrypt3 import WXBizMsgCrypt
 
@@ -154,7 +157,7 @@ def create_flask_app(config):
                 if userid is None or username is None:
                     return render_template('login.html',
                                            GoPage=GoPage,
-                                           LoginWallpaper=get_random_discover_backdrop())
+                                           LoginWallpaper=get_login_wallpaper())
                 else:
                     return render_template('navigation.html',
                                            GoPage=GoPage,
@@ -165,7 +168,7 @@ def create_flask_app(config):
             else:
                 return render_template('login.html',
                                        GoPage=GoPage,
-                                       LoginWallpaper=get_random_discover_backdrop())
+                                       LoginWallpaper=get_login_wallpaper())
 
         else:
             GoPage = request.form.get('next') or ""
@@ -177,13 +180,13 @@ def create_flask_app(config):
             if not username:
                 return render_template('login.html',
                                        GoPage=GoPage,
-                                       LoginWallpaper=get_random_discover_backdrop(),
+                                       LoginWallpaper=get_login_wallpaper(),
                                        err_msg="请输入用户名")
             user_info = get_user(username)
             if not user_info:
                 return render_template('login.html',
                                        GoPage=GoPage,
-                                       LoginWallpaper=get_random_discover_backdrop(),
+                                       LoginWallpaper=get_login_wallpaper(),
                                        err_msg="用户名或密码错误")
             # 创建用户实体
             user = User(user_info)
@@ -202,7 +205,7 @@ def create_flask_app(config):
             else:
                 return render_template('login.html',
                                        GoPage=GoPage,
-                                       LoginWallpaper=get_random_discover_backdrop(),
+                                       LoginWallpaper=get_login_wallpaper(),
                                        err_msg="用户名或密码错误")
 
     # 开始
@@ -451,7 +454,7 @@ def create_flask_app(config):
         SiteDict = []
         Indexers = Searcher().indexer.get_indexers() or []
         for item in Indexers:
-            SiteDict.append(item[1])
+            SiteDict.append(item.name)
 
         # 下载目录
         SaveDirs = WebAction().get_download_dirs()
@@ -492,7 +495,7 @@ def create_flask_app(config):
                 for tmdbinfo in tmdbinfos:
                     tmp_info = MetaInfo(title=SearchWord)
                     tmp_info.set_tmdb_info(tmdbinfo)
-                    tmp_info.poster_path = "https://image.tmdb.org/t/p/w500%s" % tmp_info.poster_path
+                    tmp_info.poster_path = TMDB_IMAGE_W500_URL % tmp_info.poster_path
                     medias.append(tmp_info)
         return render_template("medialist.html",
                                SearchWord=SearchWord or "",
@@ -507,7 +510,7 @@ def create_flask_app(config):
     def movie_rss():
         RssItems = get_rss_movies()
         RssSites = Sites().get_sites()
-        SearchSites = [item[1] for item in Searcher().indexer.get_indexers()]
+        SearchSites = [item.name for item in Searcher().indexer.get_indexers()]
         RuleGroups = FilterRule().get_rule_groups()
         return render_template("rss/movie_rss.html",
                                Count=len(RssItems),
@@ -525,7 +528,7 @@ def create_flask_app(config):
     def tv_rss():
         RssItems = get_rss_tvs()
         RssSites = Sites().get_sites()
-        SearchSites = [item[1] for item in Searcher().indexer.get_indexers() or []]
+        SearchSites = [item.name for item in Searcher().indexer.get_indexers() or []]
         RuleGroups = FilterRule().get_rule_groups()
         return render_template("rss/tv_rss.html",
                                Count=len(RssItems),
@@ -611,7 +614,7 @@ def create_flask_app(config):
             elif Client == DownloaderType.Aria2:
                 name = torrent.get('bittorrent', {}).get('info', {}).get("name")
                 # 进度
-                progress = round(int(torrent.get('completedLength'))/int(torrent.get("totalLength")), 1) * 100
+                progress = round(int(torrent.get('completedLength')) / int(torrent.get("totalLength")), 1) * 100
                 state = "Downloading"
                 dlspeed = str_filesize(torrent.get('downloadSpeed'))
                 upspeed = str_filesize(torrent.get('uploadSpeed'))
@@ -886,7 +889,8 @@ def create_flask_app(config):
                 </svg>
                 '''
                 scheduler_cfg_list.append(
-                    {'name': '目录同步', 'time': '实时监控', 'state': sta_sync, 'id': 'sync', 'svg': svg, 'color': "orange"})
+                    {'name': '目录同步', 'time': '实时监控', 'state': sta_sync, 'id': 'sync', 'svg': svg,
+                     'color': "orange"})
         # 豆瓣同步
         douban_cfg = config.get_config('douban')
         if douban_cfg:
@@ -914,7 +918,7 @@ def create_flask_app(config):
         </svg>
         '''
         scheduler_cfg_list.append(
-            {'name': '清理文件缓存', 'time': '手动', 'state': 'OFF', 'id': 'blacklist', 'svg': svg, 'color': 'red'})
+            {'name': '清理转移缓存', 'time': '手动', 'state': 'OFF', 'id': 'blacklist', 'svg': svg, 'color': 'red'})
 
         # 名称识别测试
         svg = '''
@@ -946,16 +950,34 @@ def create_flask_app(config):
         scheduler_cfg_list.append(
             {'name': '过滤规则测试', 'time': '', 'state': 'OFF', 'id': 'ruletest', 'svg': svg, 'color': 'yellow'})
 
-        # 实时日志
+        # 网络连通性测试
         svg = '''
-        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-terminal" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-network" width="40" height="40" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-           <path d="M5 7l5 5l-5 5"></path>
-           <line x1="12" y1="19" x2="19" y2="19"></line>
+           <circle cx="12" cy="9" r="6"></circle>
+           <path d="M12 3c1.333 .333 2 2.333 2 6s-.667 5.667 -2 6"></path>
+           <path d="M12 3c-1.333 .333 -2 2.333 -2 6s.667 5.667 2 6"></path>
+           <path d="M6 9h12"></path>
+           <path d="M3 19h7"></path>
+           <path d="M14 19h7"></path>
+           <circle cx="12" cy="19" r="2"></circle>
+           <path d="M12 15v2"></path>
+        </svg>
+        '''
+        targets = ["www.themoviedb.org", "api.themoviedb.org", "image.tmdb.org", "images.weserv.nl", "webservice.fanart.tv", "api.telegram.org", "qyapi.weixin.qq.com"]
+        scheduler_cfg_list.append(
+            {'name': '网络连通性测试', 'time': '', 'state': 'OFF', 'id': 'nettest', 'svg': svg, 'color': 'cyan', "targets": targets})
+
+        # 备份
+        svg = '''
+        <svg t="1660720525544" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1559" width="16" height="16">
+        <path d="M646 1024H100A100 100 0 0 1 0 924V258a100 100 0 0 1 100-100h546a100 100 0 0 1 100 100v31a40 40 0 1 1-80 0v-31a20 20 0 0 0-20-20H100a20 20 0 0 0-20 20v666a20 20 0 0 0 20 20h546a20 20 0 0 0 20-20V713a40 40 0 0 1 80 0v211a100 100 0 0 1-100 100z" fill="#ffffff" p-id="1560"></path>
+        <path d="M924 866H806a40 40 0 0 1 0-80h118a20 20 0 0 0 20-20V100a20 20 0 0 0-20-20H378a20 20 0 0 0-20 20v8a40 40 0 0 1-80 0v-8A100 100 0 0 1 378 0h546a100 100 0 0 1 100 100v666a100 100 0 0 1-100 100z" fill="#ffffff" p-id="1561"></path>
+        <path d="M469 887a40 40 0 0 1-27-10L152 618a40 40 0 0 1 1-60l290-248a40 40 0 0 1 66 30v128a367 367 0 0 0 241-128l94-111a40 40 0 0 1 70 35l-26 109a430 430 0 0 1-379 332v142a40 40 0 0 1-40 40zM240 589l189 169v-91a40 40 0 0 1 40-40c144 0 269-85 323-214a447 447 0 0 1-323 137 40 40 0 0 1-40-40v-83z" fill="#ffffff" p-id="1562"></path>
         </svg>
         '''
         scheduler_cfg_list.append(
-            {'name': '实时日志', 'time': '', 'state': 'OFF', 'id': 'logging', 'svg': svg, 'color': 'indigo'})
+            {'name': '备份&恢复', 'time': '', 'state': 'OFF', 'id': 'backup', 'svg': svg, 'color': 'green'})
 
         return render_template("service.html",
                                Count=len(scheduler_cfg_list),
@@ -1086,49 +1108,45 @@ def create_flask_app(config):
     @login_required
     def directorysync():
         sync_paths = config.get_config("sync").get("sync_path")
+        rmt_mode = config.get_config("sync").get("sync_mod")
         SyncPaths = []
         if sync_paths:
             if isinstance(sync_paths, list):
-                for sync_path in sync_paths:
-                    SyncPath = {}
-                    is_rename = True
-                    is_enabled = True
-                    tmp = sync_path.split("&")
-                    sync_path = tmp[0]
-                    vars = tmp[1:]
-                    if sync_path.startswith("#"):
-                        is_enabled = False
-                        sync_path = sync_path[1:-1]
-                    if sync_path.startswith("["):
-                        is_rename = False
-                        sync_path = sync_path[1:-1]
-                    paths = sync_path.split("|")
+                for sync_items in sync_paths:
+                    SyncPath = {'enabled': True, 'rename': True}
+                    # 是否启用
+                    if sync_items.startswith("#"):
+                        SyncPath['enabled'] = False
+                        sync_items = sync_items[1:-1]
+                    # 是否重命名
+                    if sync_items.startswith("["):
+                        SyncPath['rename'] = False
+                        sync_items = sync_items[1:-1]
+                    # 转移方式
+                    config_items = sync_items.split("@")
+                    if not config_items:
+                        continue
+                    if len(config_items) > 1:
+                        SyncPath['syncmod'] = config_items[-1]
+                    else:
+                        SyncPath['syncmod'] = rmt_mode
+                    SyncPath['syncmod_name'] = RmtMode[SyncPath['syncmod'].upper()].value
+                    if not SyncPath['syncmod']:
+                        continue
+                    # 源目录|目的目录|未知目录
+                    paths = config_items[0].split("|")
                     if not paths:
                         continue
                     if len(paths) > 0:
                         if not paths[0]:
                             continue
-                        SyncPath['from'] = paths[0]
-                        if get_system() == OsType.WINDOWS:
-                            SyncPath['from'] = os.path.normpath(paths[0]).replace("\\", "\\\\")
+                        SyncPath['from'] = paths[0].replace("\\", "/")
                     if len(paths) > 1:
-                        SyncPath['to'] = paths[1]
-                        if get_system() == OsType.WINDOWS:
-                            SyncPath['to'] = os.path.normpath(paths[1]).replace("\\", "\\\\")
+                        SyncPath['to'] = paths[1].replace("\\", "/")
                     if len(paths) > 2:
-                        SyncPath['unknown'] = paths[2]
-                        if get_system() == OsType.WINDOWS:
-                            SyncPath['unknown'] = os.path.normpath(paths[2]).replace("\\", "\\\\")
-                    SyncPath['rename'] = is_rename
-                    SyncPath['enabled'] = is_enabled
-                    SyncPath['subtitle_enable_flag'] = False
-                    for v in vars:
-                        if v.startswith("subtitle_enable_flag=1"):
-                            SyncPath['subtitle_enable_flag'] = True
+                        SyncPath['unknown'] = paths[2].replace("\\", "/")
                     SyncPaths.append(SyncPath)
             else:
-                if get_system() == OsType.WINDOWS:
-                    sync_paths = os.path.normpath(sync_paths).replace("\\", "\\\\")
                 SyncPaths = [{"from": sync_paths}]
         SyncPaths = sorted(SyncPaths, key=lambda o: o.get("from"))
         SyncCount = len(SyncPaths)
@@ -1301,7 +1319,10 @@ def create_flask_app(config):
     @App.route('/indexer', methods=['POST', 'GET'])
     @login_required
     def indexer():
-        return render_template("setting/indexer.html", Config=config.get_config())
+        indexers = BuiltinIndexer().get_indexers()
+        return render_template("setting/indexer.html",
+                               Config=config.get_config(),
+                               Indexers=indexers)
 
     # 媒体库页面
     @App.route('/library', methods=['POST', 'GET'])
@@ -1375,11 +1396,11 @@ def create_flask_app(config):
             for f in os.listdir(d):
                 ff = os.path.join(d, f)
                 if os.path.isdir(ff):
-                    r.append('<li class="directory collapsed"><a rel="%s/">%s</a></li>' % (ff, f))
+                    r.append('<li class="directory collapsed"><a rel="%s/">%s</a></li>' % (ff.replace("\\", "/"), f.replace("\\", "/")))
                 else:
                     if ft != "HIDE_FILES_FILTER":
                         e = os.path.splitext(f)[1][1:]
-                        r.append('<li class="file ext_%s"><a rel="%s">%s</a></li>' % (e, ff, f))
+                        r.append('<li class="file ext_%s"><a rel="%s">%s</a></li>' % (e, ff.replace("\\", "/"), f.replace("\\", "/")))
             r.append('</ul>')
         except Exception as e:
             r.append('加载路径失败: %s' % str(e))
@@ -1524,6 +1545,63 @@ def create_flask_app(config):
             if text:
                 WebAction().handle_message_job(text, SearchType.TG, user_id)
         return 'Success'
+
+    @App.route('/backup', methods=['POST'])
+    @login_required
+    def backup():
+        """
+        备份用户设置文件
+        :return: 备份文件.zip_file
+        """
+        try:
+            # 创建备份文件夹
+            config_path = Path(config.get_config_path()).parent
+            backup_file = f"bk_{time.strftime('%Y%m%d%H%M%S')}"
+            backup_path = config_path / "backup_file" / backup_file
+            backup_path.mkdir(parents=True)
+            # 把现有的相关文件进行copy备份
+            shutil.copy(f'{config_path}/config.yaml', backup_path)
+            shutil.copy(f'{config_path}/default-category.yaml', backup_path)
+            shutil.copy(f'{config_path}/user.db', backup_path)
+            conn = sqlite3.connect(f'{backup_path}/user.db')
+            cursor = conn.cursor()
+            # 执行操作删除不需要备份的表
+            table_list = [
+                'SEARCH_RESULT_INFO',
+                'RSS_TORRENTS',
+                'DOUBAN_MEDIAS',
+                'TRANSFER_HISTORY',
+                'TRANSFER_UNKNOWN',
+                'TRANSFER_BLACKLIST',
+                'SYNC_HISTORY',
+                'DOWNLOAD_HISTORY',
+            ]
+            for table in table_list:
+                cursor.execute(f"""DROP TABLE IF EXISTS {table};""")
+            conn.commit()
+            cursor.close()
+            conn.close()
+            zip_file = str(backup_path) + '.zip'
+            if os.path.exists(zip_file):
+                zip_file = str(backup_path) + '.zip'
+            shutil.make_archive(str(backup_path), 'zip', str(backup_path))
+            shutil.rmtree(str(backup_path))
+        except Exception as e:
+            log.debug(e)
+            return make_response("创建备份失败", 400)
+        return send_file(zip_file)
+
+    @App.route('/upload', methods=['POST'])
+    def upload():
+        try:
+            files = request.files['file']
+            config_path = Path(config.get_config_path()).parent
+            zip_file = config_path / files.filename
+            files.save(str(zip_file))
+            return {"code": 0, "filepath": str(zip_file)}
+        except Exception as e:
+            log.debug(e)
+            return {"code": 1, "msg": str(e), "filepath": ""}
 
     # 自定义模板过滤器
     @App.template_filter('b64encode')

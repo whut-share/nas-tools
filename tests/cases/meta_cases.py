@@ -1,4 +1,36 @@
 meta_cases = [{
+    "title": "Nande Koko ni Sensei ga!? 2019 Blu-ray Remux 1080p AVC LPCM-7³ ACG",
+    "subtitle": "",
+    "target": {
+        "type": "电影",
+        "cn_name": "",
+        "en_name": "Nande Koko ni Sensei ga!?",
+        "year": "2019",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "BluRay",
+        "pix": "1080p",
+        "video_codec": "AVC",
+        "audio_codec": "LPCM 7³"
+    }
+}, {
+    "title": "[GM-Team][国漫][斗破苍穹 第5季][Fights Break Sphere V][2022][05][HEVC][GB][4K]",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "Fights Break Sphere V",
+        "year": "2022",
+        "part": "",
+        "season": "S05",
+        "episode": "E05",
+        "restype": "",
+        "pix": "",
+        "video_codec": "HEVC",
+        "audio_codec": ""
+    }
+}, {
     "title": "Ousama Ranking S01E02-[1080p][BDRIP][x265.FLAC].mkv",
     "subtitle": "",
     "target": {
@@ -115,7 +147,7 @@ meta_cases = [{
     "subtitle": "",
     "target": {
         "type": "电视剧",
-        "cn_name": "處刑少女的生存之道",
+        "cn_name": "处刑少女的生存之道",
         "en_name": "",
         "year": "",
         "part": "",
@@ -250,7 +282,7 @@ meta_cases = [{
         "season": "S02",
         "episode": "E02",
         "restype": "",
-        "pix": "1920p",
+        "pix": "1080p",
         "video_codec": "HEVC",
         "audio_codec": "AAC"
     }
@@ -378,7 +410,7 @@ meta_cases = [{
         "season": "S04",
         "episode": "E17",
         "restype": "",
-        "pix": "1920p",
+        "pix": "1080p",
         "video_codec": "AVC",
         "audio_codec": "AAC"
     }
@@ -410,7 +442,7 @@ meta_cases = [{
         "season": "S01",
         "episode": "E01-E26",
         "restype": "",
-        "pix": "1920p",
+        "pix": "1080p",
         "video_codec": "",
         "audio_codec": "flac"
     }

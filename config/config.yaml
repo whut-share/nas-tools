@@ -1,5 +1,12 @@
 # 【配置注意要符合yaml语法，:号后有1个空格，不能使用全角标点符号】
 # 【最新版本已经可以通过WEB页面对所有配置项进行配置，推荐使用WEB页面进行配置】
+# 【文件转移方式的说明】
+#   目前支持的文件转移方式：link、copy、softlink、move、rclone、rclonecopy，link即硬链接、softlink为软链接、copy为复制、move为移动、rclone针对rclone网盘挂载（rclone为移动、rclonecopy为复制）
+#   link要求源目录和目的目录或媒体库目录在一个磁盘分区或者存储空间，Docker运行时link模式需要直接映射源目录和目的目录或媒体库目录的上级目录，否则docker可能仍然会认为是跨盘
+#   softlink模式注意宿主机的源目录映射到docker容器中后要路径要一致，否则可能软链接成功但无法在宿主机使用
+#   copy模式会直接复制一份文件数据
+#   move会直接移动原文件，会影响做种，请谨慎使用
+#   rclone需要自行映射rclone配置目录到容器中，或在容器内完成rclone配置
 app:
   # 【日志记录类型】：server、file
   # 如果是使用Docker安装建议设置为file，将日志输出到配置文件目录
@@ -101,7 +108,7 @@ plex:
 
 # 【配置消息通知服务】
 message:
-  # 【发送消息使用的渠道】：wechat、serverchan、telegram、bark、pushplus，需在对应的配置区域配置。不使用的渠道配置可以留空或者删除。推荐使用wechat微信渠道。不设置则不启用消息服务
+  # 【发送消息使用的渠道】：wechat、serverchan、telegram、bark、pushplus、iyuu，需在对应的配置区域配置。不使用的渠道配置可以留空或者删除。推荐使用wechat、telegram渠道可以远程交互。不设置则不启用消息服务
   msg_channel: wechat
   # 【Emby播放状态通知白名单】：配置了Emby webhooks插件回调时，用户播放媒体库中的媒体时会发送消息通知，本处配置哪些用户的设备不通知，避免打扰，配置格式：用户:设备名称，可用 - 增加多项
   webhook_ignore:
@@ -127,6 +134,7 @@ message:
     default_proxy: false
   # 【Server酱消息通知】：填写ServerChan的API KEY，SCT类型，在https://sct.ftqq.com/中申请（非VIP貌似每日限制只能收到5条消息）
   serverchan:
+    # 令牌Token
     sckey:
   # 【Telegram通知】：填写Telegram bot机器人的信息，需要在Telegram中创建机器人
   telegram:
@@ -153,25 +161,18 @@ message:
     push_channel:
     # webhook编码，仅在channel使用webhook渠道和CP渠道时有效
     push_webhook:
-
+  # 【爱语飞飞消息通知】：https://iyuu.cn/ 申请令牌token
+  iyuu:
+    # 令牌Token
+    iyuu_token:
 
 # 【配置文件夹监控】：文件夹内容发生变化时自动识别转移
 sync:
-  # 【监控目录列表】：监控目录有文件变化时会自动进行媒体整理、转移并命名
-  # 可以配置多个，使用|分隔，按'源目录|目的目录|未识别目录'格式配置，源目录为需要同步的目录，目的目录为识别和改名后存放的目录，未识别目录为无法识别时转移的目录
-  # 配置格式1：'源目录'，比如：'/mnt/pt'，源目录文件会自动识别是电影、电视剧或动漫并分别转移到media中配置的movie_path、tv_path、anime_path目录中，未识别的会转移到media中配置的unknown_path中
-  # 配置格式2：'源目录|目的目录'，比如：'/mnt/pt_movie|mnt/emby_movie'，源目录中文件不会区分类型，均往目的目录转移，未识别的会转移到media中配置的unknown_path中
-  # 配置格式3：'源目录|目的目录|未识别目录'，比如：'/mnt/pt_movie|mnt/emby_movie|emby_unknown'，源目录中文件不会区分类型，均往目的目录转移，未识别的会转移到未识别目录中
-  # 配置格式4：'[源目录|目的目录]'，比如'[/mnt/pt_music|mnt/emby_music]'，即使用[]括起来代表这个目录不是影视文件，不需要进行识别和重命名，程序会对源目录下所有的文件全部硬链接到目的目录，不会有消息通知等功能
-  # 一行的三个目录需要在同一个磁盘分区/共享目录中，有多个目录的，需要映射上级目录，源目录和目的目录为子目录，如果分开映射则可能发生跨盘的问题
-  # 未识别的记录同时会在媒体整理->手动识别下面出现，未识别目录只是硬链接一份用于备份，同时手工识别处理后程序也不会主动删除，如果不想要多硬链接一份，可以不配置该目录
+  # 【监控目录列表】：监控目录有文件变化时会自动进行转移处理
+  # 可以配置多个，按'源目录|目的目录|未识别目录@转移模式'格式配置，源目录为需要同步的目录，目的目录为识别和改名后存放的目录，未识别目录为无法识别时转移的目录
+  # 使用[]将整项括起来表示该目录配置不识别重命名，使用#将整项括起来表示该目录配置不启用
+  # 目的目录和未识别目录为可选项；目的目录不配置时会自动分类往媒体库目录存放；未识别目录仅用于备份，程序也不会主动删除，可以不配置该目录，未识别的记录可会在媒体整理->手动识别找到并手工处理
   sync_path:
-  # 【监控目录文件的转移方式】：link、copy、softlink、move、rclone、rclonecopy，link即硬链接、softlink为软链接、copy为复制、move为移动、rclone针对rclone网盘挂载，rclone为移动、rclonecopy为复制
-  # link要求源目录和目的目录或媒体库目录在一个磁盘分区或者存储空间，Docker运行时link模式需要直接映射源目录和目的目录或媒体库目录的上级目录，否则docker可能仍然会认为是跨盘
-  # softlink模式注意宿主机的源目录映射到docker容器中后要路径要一致，否则可能软链接成功但无法在宿主机使用
-  # move会直接移动原文件，会影响做种，请谨慎使用
-  # rclone需要自行映射rclone配置目录到容器中，或在容器内完成rclone配置，且网盘配置名称必须为：NASTOOL
-  sync_mod: link
   # 【监控目录操作系统类型】：windows、linux。如果是windows，目录同步功能性能会比较差，会导致NAS不能休眠，除非是挂载的windows的远程共享目录或者是windows的docker，否则建议设置为linux
   nas_sys: linux
 
@@ -184,14 +185,9 @@ pt:
   pt_monitor: false
   # 【只监控NASTool添加的下载】：启用后只有NASTool添加的下载才会被自动转移和显示，关闭则下载软件中所有的任务都会转移和显示
   pt_monitor_only: True
-  # 【PT下载完成后转移到媒体库的转移模式】：link、copy、softlink、move、rclone、rclonecopy，link即硬链接、softlink为软链接、copy为复制、move为移动、rclone针对rclone网盘挂载，rclone为移动、rclonecopy为复制
-  # copy下载做种和媒体库是两份，多占用存储（下载盘大小决定能保多少种），好处是媒体库的盘不用24小时运行可以休眠
-  # link模式不用额外增加存储空间，一份文件两份目录（显示的大小一样），但需要下载目录和媒体库目录在一个磁盘分区或者存储空间，Docker运行时link模式需要直接映射源目录和目的目录或媒体库目录的上级目录，否则docker可能仍然会认为是跨盘
-  # softlink模式注意宿主机的源目录映射到docker容器中后要路径要一致，否则可能软链接成功但无法在宿主机使用
-  # move会直接移动原文件，会影响做种，请谨慎使用
-  # rclone需要自行映射rclone配置目录到容器中，或在容器内完成rclone配置，且网盘配置名称必须为：NASTOOL
+  # 【PT下载完成后转移到媒体库的转移模式】：link、copy、softlink、move、rclone、rclonecopy，详情参考顶部说明
   rmt_mode: link
-  #【PT聚合检索使用的检索器】：jackett、prowlarr，需要配置jackett或prowlarr对应的配置区域
+  #【PT聚合检索使用的检索器】：jackett、prowlarr、builtin，需要配置jackett或prowlarr对应的配置区域，builtin为内置索引器需要在配置文件目录/sites目录下存入对应的站点配置文件
   # 1、通过微信发送关键字，实时检索下载，发送格式示例：电视剧 西部世界、西部世界第1季、西部世界第1季第2集、西部世界 2022，只会匹配真实名称，命中后会自动下载，使用说明参考：https://github.com/jxxghp/nas-tools/wiki/
   # 2、使用WEB UI中的搜索界面搜索PT资源，会识别显示真实名称，并显示媒体图片和评分等信息，会同时匹配种子名称跟真实名称
   search_indexer: jackett

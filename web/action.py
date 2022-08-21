@@ -1,3 +1,4 @@
+import datetime
 import importlib
 import os.path
 import signal
@@ -7,7 +8,7 @@ from flask_login import logout_user
 from werkzeug.security import generate_password_hash
 
 import log
-from config import RMT_MEDIAEXT, Config
+from config import RMT_MEDIAEXT, Config, TMDB_IMAGE_W500_URL, TMDB_IMAGE_ORIGINAL_URL
 from message.channel.telegram import Telegram
 from message.channel.wechat import WeChat
 from message.send import Message
@@ -95,6 +96,7 @@ class WebAction:
             "delete_downloader": self.__delete_downloader,
             "name_test": self.__name_test,
             "rule_test": self.__rule_test,
+            "net_test": self.__net_test,
             "add_filtergroup": self.__add_filtergroup,
             "set_default_filtergroup": self.__set_default_filtergroup,
             "del_filtergroup": self.__del_filtergroup,
@@ -109,7 +111,8 @@ class WebAction:
             "clear_tmdb_cache": self.__clear_tmdb_cache,
             "check_site_attr": self.__check_site_attr,
             "refresh_process": self.__refresh_process,
-            "get_download_dirs": self.get_download_dirs
+            "get_download_dirs": self.get_download_dirs,
+            "restory_backup": self.__restory_backup
         }
 
     def action(self, cmd, data):
@@ -190,11 +193,6 @@ class WebAction:
             else:
                 cfg['app']['proxies'] = {"https": None, "http": None}
             return cfg
-        # 文件转移模式
-        if cfg_key == "app.rmt_mode":
-            cfg['sync']['sync_mod'] = cfg_value
-            cfg['pt']['rmt_mode'] = cfg_value
-            return cfg
         # 豆瓣用户列表
         if cfg_key == "douban.users":
             vals = cfg_value.split(",")
@@ -231,6 +229,15 @@ class WebAction:
         """
         更新目录数据
         """
+        def remove_sync_path(obj, key):
+            if not isinstance(obj, list):
+                return []
+            ret_obj = []
+            for item in obj:
+                if item.split("@")[0].replace("\\", "/") != key.split("@")[0].replace("\\", "/"):
+                    ret_obj.append(item)
+            return ret_obj
+
         # 最大支持二层赋值
         keys = cfg_key.split(".")
         if keys:
@@ -257,18 +264,18 @@ class WebAction:
                     if not isinstance(cfg[keys[0]][keys[1]], list):
                         cfg[keys[0]][keys[1]] = [cfg[keys[0]][keys[1]]]
                     if oper == "add":
-                        cfg[keys[0]][keys[1]].append(cfg_value)
+                        cfg[keys[0]][keys[1]].append(cfg_value.replace("\\", "/"))
                     elif oper == "sub":
-                        cfg[keys[0]][keys[1]].remove(cfg_value)
+                        cfg[keys[0]][keys[1]] = remove_sync_path(cfg[keys[0]][keys[1]], cfg_value)
                         if not cfg[keys[0]][keys[1]]:
                             cfg[keys[0]][keys[1]] = None
                     elif oper == "set":
-                        cfg[keys[0]][keys[1]].remove(cfg_value)
+                        cfg[keys[0]][keys[1]] = remove_sync_path(cfg[keys[0]][keys[1]], cfg_value)
                         if update_value:
-                            cfg[keys[0]][keys[1]].append(update_value)
+                            cfg[keys[0]][keys[1]].append(update_value.replace("\\", "/"))
                 else:
                     cfg[keys[0]] = {}
-                    cfg[keys[0]][keys[1]] = cfg_value
+                    cfg[keys[0]][keys[1]] = cfg_value.replace("\\", "/")
         return cfg
 
     @staticmethod
@@ -597,14 +604,22 @@ class WebAction:
             dest_path = FileTransfer().get_dest_path_by_info(dest=dest_dir, meta_info=meta_info)
             if dest_path and dest_path.find(meta_info.title) != -1:
                 delete_transfer_log_by_id(logid)
-                if not meta_info.get_episode_string():
-                    # 电影或者没有集数的电视剧，删除整个目录
+                rm_parent_dir = False
+                if not meta_info.get_season_list():
+                    # 电影，删除整个目录
                     try:
                         shutil.rmtree(dest_path)
                     except Exception as e:
                         log.console(str(e))
+                elif not meta_info.get_episode_string():
+                    # 电视剧但没有集数，删除季目录
+                    try:
+                        shutil.rmtree(dest_path)
+                    except Exception as e:
+                        log.console(str(e))
+                    rm_parent_dir = True
                 else:
-                    # 有集数的电视剧
+                    # 有集数的电视剧，删除对应的集数文件
                     for dest_file in get_dir_files(dest_path):
                         file_meta_info = MetaInfo(os.path.basename(dest_file))
                         if file_meta_info.get_episode_list() and set(
@@ -613,6 +628,13 @@ class WebAction:
                                 os.remove(dest_file)
                             except Exception as e:
                                 log.console(str(e))
+                    rm_parent_dir = True
+                if rm_parent_dir and not get_dir_files(os.path.dirname(dest_path), exts=RMT_MEDIAEXT):
+                    # 没有媒体文件时，删除整个目录
+                    try:
+                        shutil.rmtree(os.path.dirname(dest_path))
+                    except Exception as e:
+                        log.console(str(e))
         return {"retcode": 0}
 
     @staticmethod
@@ -818,8 +840,11 @@ class WebAction:
         """
         维护媒体库目录
         """
-        cfg = self.set_config_directory(self.config.get_config(), data.get("oper"), data.get("key"),
-                                        data.get("value"), data.get("replace_value"))
+        cfg = self.set_config_directory(self.config.get_config(),
+                                        data.get("oper"),
+                                        data.get("key"),
+                                        data.get("value"),
+                                        data.get("replace_value"))
         # 保存配置
         self.config.save_config(cfg)
         if data.get("key") == "sync.sync_path":
@@ -943,7 +968,7 @@ class WebAction:
                 link_url = "https://movie.douban.com/subject/%s" % doubanid
                 douban_info = DoubanApi().movie_detail(doubanid)
                 if not douban_info or douban_info.get("localized_message"):
-                    return {"code": 1, "retmsg": "无法查询到豆瓣信息", "link_url": link_url}
+                    return {"code": 1, "retmsg": "无法查询到豆瓣信息", "link_url": link_url, "rssid": rssid}
                 overview = douban_info.get("intro")
                 poster_path = douban_info.get("cover_url")
                 title = douban_info.get("title")
@@ -954,9 +979,9 @@ class WebAction:
                 link_url = "https://www.themoviedb.org/movie/%s" % tmdbid
                 tmdb_info = Media().get_tmdb_info(media_type, title, year, tmdbid)
                 if not tmdb_info:
-                    return {"code": 1, "retmsg": "无法查询到TMDB信息", "link_url": link_url}
+                    return {"code": 1, "retmsg": "无法查询到TMDB信息", "link_url": link_url, "rssid": rssid}
                 overview = tmdb_info.get("overview")
-                poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path') if tmdb_info.get(
+                poster_path = TMDB_IMAGE_W500_URL % tmdb_info.get('poster_path') if tmdb_info.get(
                     'poster_path') else ""
                 title = tmdb_info.get('title')
                 vote_average = tmdb_info.get("vote_average")
@@ -991,7 +1016,7 @@ class WebAction:
                 link_url = "https://movie.douban.com/subject/%s" % doubanid
                 douban_info = DoubanApi().tv_detail(doubanid)
                 if not douban_info or douban_info.get("localized_message"):
-                    return {"code": 1, "retmsg": "无法查询到豆瓣信息", "link_url": link_url}
+                    return {"code": 1, "retmsg": "无法查询到豆瓣信息", "link_url": link_url, "rssid": rssid}
                 overview = douban_info.get("intro")
                 poster_path = douban_info.get("cover_url")
                 title = douban_info.get("title")
@@ -1002,9 +1027,9 @@ class WebAction:
                 link_url = "https://www.themoviedb.org/tv/%s" % tmdbid
                 tmdb_info = Media().get_tmdb_info(media_type, title, year, tmdbid)
                 if not tmdb_info:
-                    return {"code": 1, "retmsg": "无法查询到TMDB信息", "link_url": link_url}
+                    return {"code": 1, "retmsg": "无法查询到TMDB信息", "link_url": link_url, "rssid": rssid}
                 overview = tmdb_info.get("overview")
-                poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path') if tmdb_info.get(
+                poster_path = TMDB_IMAGE_W500_URL % tmdb_info.get('poster_path') if tmdb_info.get(
                     'poster_path') else ""
                 title = tmdb_info.get('name')
                 vote_average = tmdb_info.get("vote_average")
@@ -1162,7 +1187,7 @@ class WebAction:
             tmdb_info = Media().get_tmdb_info(mtype=MediaType.MOVIE, tmdbid=tid)
             if not tmdb_info:
                 return {"code": 1, "retmsg": "无法查询到TMDB信息"}
-            poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get('poster_path') if tmdb_info.get(
+            poster_path = TMDB_IMAGE_W500_URL % tmdb_info.get('poster_path') if tmdb_info.get(
                 'poster_path') else ""
             title = tmdb_info.get('title')
             vote_average = tmdb_info.get("vote_average")
@@ -1218,11 +1243,11 @@ class WebAction:
             if not tmdb_info.get("poster_path"):
                 tv_tmdb_info = Media().get_tmdb_info(mtype=MediaType.TV, tmdbid=tid)
                 if tv_tmdb_info:
-                    poster_path = "https://image.tmdb.org/t/p/w500%s" % tv_tmdb_info.get("poster_path")
+                    poster_path = TMDB_IMAGE_W500_URL % tv_tmdb_info.get("poster_path")
                 else:
                     poster_path = ""
             else:
-                poster_path = "https://image.tmdb.org/t/p/w500%s" % tmdb_info.get("poster_path")
+                poster_path = TMDB_IMAGE_W500_URL % tmdb_info.get("poster_path")
             year = air_date[0:4] if air_date else ""
             for episode in tmdb_info.get("episodes"):
                 episode_events.append({
@@ -1286,7 +1311,8 @@ class WebAction:
         """
         清空文件转移黑名单记录
         """
-        return {"code": truncate_transfer_blacklist()}
+        truncate_transfer_blacklist()
+        return {"code": 0}
 
     @staticmethod
     def __add_brushtask(data):
@@ -1472,6 +1498,24 @@ class WebAction:
         }
 
     @staticmethod
+    def __net_test(data):
+        target = data
+        if target == "image.tmdb.org":
+            target = target + "/t/p/w500/wwemzKWzjKYJFfCeiB57q3r4Bcm.png"
+        if target == "qyapi.weixin.qq.com":
+            target = target + "/cgi-bin/message/send"
+        target = "https://" + target
+        start_time = datetime.datetime.now()
+        res = RequestUtils().get_res(target)
+        seconds = int((datetime.datetime.now() - start_time).microseconds / 1000)
+        if not res:
+            return {"res": False, "time": "%s 毫秒" % seconds}
+        elif res.ok:
+            return {"res": True, "time": "%s 毫秒" % seconds}
+        else:
+            return {"res": False, "time": "%s 毫秒" % seconds}
+
+    @staticmethod
     def __get_site_activity(data):
         """
         查询site活动[上传，下载，魔力值]
@@ -1619,7 +1663,9 @@ class WebAction:
 
         Items = []
         TvKeys = ["%s" % key[0] for key in get_rss_tvs()]
+        TvMediaIds = ["%s" % key[3] for key in get_rss_tvs()]
         MovieKeys = ["%s" % key[0] for key in get_rss_movies()]
+        MovieMediaIds = ["%s" % key[2] for key in get_rss_movies()]
         for res in res_list:
             rid = res.get('id')
             if RecommendType in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm']:
@@ -1629,10 +1675,11 @@ class WebAction:
                     year = date[0:4]
                 else:
                     year = ''
-                if title in MovieKeys:
+                name = MetaInfo(title).get_name()
+                if name in MovieKeys or str(rid) in MovieMediaIds or "DB:%s" % rid in MovieMediaIds:
                     # 已订阅
                     fav = 1
-                elif is_media_downloaded(title, year):
+                elif is_media_downloaded(name, rid):
                     # 已下载
                     fav = 2
                 else:
@@ -1645,10 +1692,11 @@ class WebAction:
                     year = date[0:4]
                 else:
                     year = ''
-                if MetaInfo(title=title).get_name() in TvKeys:
+                name = MetaInfo(title).get_name()
+                if name in TvKeys or str(rid) in TvMediaIds or "DB:%s" % rid in TvMediaIds:
                     # 已订阅
                     fav = 1
-                elif is_media_downloaded(MetaInfo(title=title).get_name(), year):
+                elif is_media_downloaded(name, rid):
                     # 已下载
                     fav = 2
                 else:
@@ -1656,7 +1704,7 @@ class WebAction:
                     fav = 0
             image = res.get('poster_path')
             if RecommendType in ['hm', 'nm', 'ht', 'nt']:
-                image = "https://image.tmdb.org/t/p/original/%s" % image if image else ""
+                image = TMDB_IMAGE_ORIGINAL_URL % image if image else ""
             else:
                 # 替换图片分辨率
                 image = image.replace("s_ratio_poster", "m_ratio_poster")
@@ -1812,6 +1860,7 @@ class WebAction:
         获取下载目录列表
         """
         dl_dirs = []
+        # 设置的下载器的目录
         client_type = Config().get_config("pt").get("pt_client")
         save_path = Config().get_config(client_type).get("save_path")
         if save_path:
@@ -1822,4 +1871,26 @@ class WebAction:
                     if not path:
                         continue
                     dl_dirs.append(os.path.normpath(path.split("|")[0]))
-        return [x.replace("\\", "/") for x in list(set(Sync().get_sync_dirs()).union(set(dl_dirs)))]
+        # 下载器自己设置的目录
+        client_dirs = Downloader().get_download_dirs()
+        return [x.replace("\\", "/") for x in list(set(client_dirs).union(set(dl_dirs)))]
+
+    @staticmethod
+    def __restory_backup(data):
+        """
+        解压恢复备份文件
+        """
+        filename = data.get("file_name")
+        if filename:
+            config_path = os.path.dirname(Config().get_config_path())
+            file_path = os.path.join(config_path, filename)
+            try:
+                shutil.unpack_archive(file_path, config_path, format='zip')
+                return {"code": 0, "msg": ""}
+            except Exception as e:
+                return {"code": 1, "msg": str(e)}
+            finally:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+
+        return {"code": 1, "msg": "文件不存在"}

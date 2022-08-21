@@ -1,24 +1,17 @@
 import os
-import re
 import threading
 import traceback
 
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
-from config import RMT_MEDIAEXT, RMT_SUBEXT, Config
-from rmt.metainfo import MetaVideo, is_anime
+from config import RMT_MEDIAEXT, Config
 import log
 from rmt.filetransfer import FileTransfer
 from utils.functions import singleton, is_invalid_path, is_path_in_path, is_bluray_dir, get_dir_level1_medias, \
-    get_dir_files, get_system
-from utils.types import SyncType, OsType
-if get_system() == OsType.WINDOWS:
-    from watchdog.observers.read_directory_changes import WindowsApiObserver
-from utils.sqls import is_transfer_in_blacklist, insert_sync_history, is_sync_in_history
-from watchdog.events import FileSystemEventHandler,FileCreatedEvent
-from itertools import groupby
-import parse
-import anitopy
+    get_dir_files
+from utils.sqls import insert_sync_history, is_sync_in_history
+from utils.types import SyncType, OsType, RmtMode
+from watchdog.events import FileSystemEventHandler
 
 lock = threading.Lock()
 
@@ -29,34 +22,39 @@ class FileMonitorHandler(FileSystemEventHandler):
     """
     def __init__(self, monpath, sync, **kwargs):
         super(FileMonitorHandler, self).__init__(**kwargs)
-        self._watch_path = os.path.normpath(monpath)
+        self._watch_path = monpath
         self.sync = sync
-        self.only_monitor_subtitle = False
-        if self._watch_path in self.sync.monitor_sub_title_dirs:
-            self.only_monitor_subtitle = True
 
     def on_created(self, event):
-        self.sync.file_change_handler(event, "创建", event.src_path, self.only_monitor_subtitle)
+        self.sync.file_change_handler(event, "创建", event.src_path)
 
     def on_moved(self, event):
-        if not self.only_monitor_subtitle:
-            self.sync.file_change_handler(event, "移动", event.dest_path, self.only_monitor_subtitle)
+        self.sync.file_change_handler(event, "移动", event.dest_path)
 
     def on_modified(self, event):
-        if not self.only_monitor_subtitle:
-            self.sync.file_change_handler(event, "修改", event.src_path, self.only_monitor_subtitle)
+        self.sync.file_change_handler(event, "修改", event.src_path)
 
 
 @singleton
 class Sync(object):
     filetransfer = None
     sync_dir_config = {}
-    monitor_sub_title_dirs = set()
     __observer = []
     __sync_path = None
     __sync_sys = OsType.LINUX
     __synced_files = []
     __need_sync_paths = {}
+    __sync_mod = None
+
+    # 转移模式
+    __sync_mode_dict = {
+        "copy": RmtMode.COPY,
+        "link": RmtMode.LINK,
+        "softlink": RmtMode.SOFTLINK,
+        "move": RmtMode.MOVE,
+        "rclone": RmtMode.RCLONE,
+        "rclonecopy": RmtMode.RCLONECOPY
+    }
 
     def __init__(self):
         self.filetransfer = FileTransfer()
@@ -69,6 +67,7 @@ class Sync(object):
             if sync.get('nas_sys') == "windows":
                 self.__sync_sys = OsType.WINDOWS
             self.__sync_path = sync.get('sync_path')
+            self.__sync_mod = sync.get("sync_mod")
             self.init_sync_dirs()
 
     def init_sync_dirs(self):
@@ -76,25 +75,32 @@ class Sync(object):
         初始化监控文件配置
         """
         self.sync_dir_config = {}
-        for p in self.monitor_sub_title_dirs:
-            log.info("【SYNC】关闭监控目录字幕变化: %s" % p)
-        self.monitor_sub_title_dirs = set()
         if self.__sync_path:
-            for sync_monpath in self.__sync_path:
-                if not sync_monpath:
+            for sync_item in self.__sync_path:
+                if not sync_item:
                     continue
-                only_link = False
+                # 启用标志
                 enabled = True
-                tmp = sync_monpath.split("&")
-                sync_monpath = tmp[0]
-                vars = tmp[1:]
-                if sync_monpath.startswith('#'):
+                if sync_item.startswith('#'):
                     enabled = False
-                    sync_monpath = sync_monpath[1:-1]
-                elif sync_monpath.startswith('['):
+                    sync_item = sync_item[1:-1]
+                # 仅硬链接标志
+                only_link = False
+                if sync_item.startswith('['):
                     only_link = True
-                    sync_monpath = sync_monpath[1:-1]
-                monpaths = sync_monpath.split('|')
+                    sync_item = sync_item[1:-1]
+                # 读取目录和转移方式
+                config_items = sync_item.split('@')
+                if not config_items:
+                    continue
+                if len(config_items) > 1:
+                    path_syncmode = self.__sync_mode_dict.get(config_items[-1])
+                else:
+                    path_syncmode = self.__sync_mode_dict.get(self.__sync_mod)
+                if not path_syncmode:
+                    continue
+                # 源目录|目的目录|未知目录
+                monpaths = config_items[0].split('|')
                 if monpaths[0]:
                     monpath = os.path.normpath(monpaths[0])
                 else:
@@ -112,16 +118,11 @@ class Sync(object):
                     else:
                         unknown_path = None
                     if target_path and unknown_path:
-                        log.info("【SYNC】读取到监控目录：%s，目的目录：%s，未识别目录：%s" % (monpath, target_path, unknown_path))
+                        log.info("【SYNC】读取到监控目录：%s，目的目录：%s，未识别目录：%s，转移方式：%s" % (monpath, target_path, unknown_path, path_syncmode.value))
                     elif target_path:
-                        log.info("【SYNC】读取到监控目录：%s，目的目录：%s" % (monpath, target_path))
+                        log.info("【SYNC】读取到监控目录：%s，目的目录：%s，转移方式：%s" % (monpath, target_path, path_syncmode.value))
                     else:
-                        log.info("【SYNC】读取到监控目录：%s" % monpath)
-                    for v in vars:
-                        if v.startswith("subtitle_enable_flag=1"):
-                            if os.path.exists(target_path):
-                                log.info("【SYNC】开启监控目录字幕变化: %s" % target_path)
-                                self.monitor_sub_title_dirs.add(os.path.normpath(target_path))
+                        log.info("【SYNC】读取到监控目录：%s，转移方式：%s" % (monpath, path_syncmode.value))
                     if not enabled:
                         log.info("【SYNC】%s 不进行监控和同步：手动关闭" % monpath)
                         continue
@@ -136,14 +137,14 @@ class Sync(object):
                 else:
                     target_path = None
                     unknown_path = None
-                    log.info("【SYNC】读取到监控目录：%s" % monpath)
+                    log.info("【SYNC】读取到监控目录：%s，转移方式：%s" % (monpath, path_syncmode.value))
                     if not enabled:
                         log.info("【SYNC】%s 不进行监控和同步：手动关闭" % monpath)
                         continue
                 # 登记关系
                 if os.path.exists(monpath):
                     self.sync_dir_config[monpath] = {'target': target_path, 'unknown': unknown_path,
-                                                     'onlylink': only_link}
+                                                     'onlylink': only_link, 'syncmod': path_syncmode}
                 else:
                     log.error("【SYNC】%s 目录不存在！" % monpath)
 
@@ -155,15 +156,14 @@ class Sync(object):
             return []
         return [os.path.normpath(key) for key in self.sync_dir_config.keys()]
 
-    def file_change_handler(self, event, text, event_path, only_monitor_subtitle = False):
+    def file_change_handler(self, event, text, event_path):
         """
         处理文件变化
         :param event: 事件
         :param text: 事件描述
         :param event_path: 事件文件路径
-        :param only_monitor_subtitle: 是否是监控字幕目录
         """
-        if not event.is_directory and not only_monitor_subtitle:
+        if not event.is_directory:
             # 文件发生变化
             try:
                 if not os.path.exists(event_path):
@@ -219,16 +219,17 @@ class Sync(object):
                 target_path = target_dirs.get('target')
                 unknown_path = target_dirs.get('unknown')
                 onlylink = target_dirs.get('onlylink')
+                sync_mode = target_dirs.get('syncmod')
 
                 # 只做硬链接，不做识别重命名
                 if onlylink:
                     if is_sync_in_history(event_path, target_path):
                         return
                     log.info("【SYNC】开始同步 %s" % event_path)
-                    ret = self.filetransfer.link_sync_files(in_from=SyncType.MON,
-                                                            src_path=monitor_dir,
+                    ret = self.filetransfer.link_sync_files(src_path=monitor_dir,
                                                             in_file=event_path,
-                                                            target_dir=target_path)
+                                                            target_dir=target_path,
+                                                            sync_transfer_mode=sync_mode)
                     if ret != 0:
                         log.warn("【SYNC】%s 同步失败，错误码：%s" % (event_path, ret))
                     else:
@@ -249,7 +250,8 @@ class Sync(object):
                         ret, ret_msg = self.filetransfer.transfer_media(in_from=SyncType.MON,
                                                                         in_path=event_path,
                                                                         target_dir=target_path,
-                                                                        unknown_dir=unknown_path)
+                                                                        unknown_dir=unknown_path,
+                                                                        sync_transfer_mode=sync_mode)
                         if not ret:
                             log.warn("【SYNC】%s 转移失败：%s" % (event_path, ret_msg))
                     else:
@@ -266,71 +268,15 @@ class Sync(object):
                                         return
                                 self.__need_sync_paths[from_dir].update({'files': files})
                             else:
-                                self.__need_sync_paths[from_dir] = {'target': target_path, 'unknown': unknown_path,
+                                self.__need_sync_paths[from_dir] = {'target': target_path,
+                                                                    'unknown': unknown_path,
+                                                                    'syncmod': sync_mode,
                                                                     'files': [event_path]}
                         finally:
                             lock.release()
             except Exception as e:
                 log.error("【SYNC】发生错误：%s - %s" % (str(e), traceback.format_exc()))
-        elif isinstance(event, FileCreatedEvent) and only_monitor_subtitle:
-            if os.path.exists(event_path):
-                file = os.path.basename(event_path)
-                if os.path.splitext(file)[-1].lower() in RMT_SUBEXT:
-                    flag = False
-                    if file.find(".zh-cn") > -1:
-                        file = file.replace(".zh-cn", "")
-                    dir_name = os.path.dirname(event_path)
-                    list_files = os.listdir(dir_name)
-                    paths = list(filter(lambda x: os.path.splitext(file)[0].find(x) > -1, map(lambda x: os.path.splitext(x)[0], list_files)))
-                    for k, v in groupby(paths):
-                        if k == os.path.splitext(file)[0] and len(list(v)) == 1:
-                            tmp_file = [p for p in list_files if os.path.splitext(p)[-1] in RMT_MEDIAEXT][0]
-                            target_file = None
-                            if re.compile(r"第(\s\d{1,4}(-\d{1,4})?\s)集").search(tmp_file):
-                                begin_episode = None
-                                end_episode = None
-                                if is_anime(file):
-                                    anitopy_info = anitopy.parse(file)
-                                    episode_number = anitopy_info.get("episode_number")
-                                    if isinstance(episode_number, list):
-                                        if len(episode_number) == 1:
-                                            begin_episode = episode_number[0]
-                                        else:
-                                            begin_episode = episode_number[0]
-                                            end_episode = episode_number[-1]
-                                    else:
-                                        begin_episode = episode_number
-                                    if isinstance(begin_episode, str) and begin_episode.isdigit():
-                                        begin_episode = int(begin_episode)
-                                    if isinstance(end_episode, str) and end_episode.isdigit() and end_episode is not None:
-                                        end_episode = int(end_episode)
-                                else:
-                                    meta_info = MetaVideo(file)
-                                    begin_episode = meta_info.begin_episode
-                                    end_episode = meta_info.end_episode
 
-                                if end_episode is not None and end_episode != begin_episode:
-                                    ep = "%s-%s" % (str(begin_episode), str(end_episode))
-                                else:
-                                    ep = str(begin_episode)
-                                for tf in [p for p in list_files if os.path.splitext(p)[-1] in RMT_MEDIAEXT]:
-                                    ret = parse.parse("{tmp}第{ep}集{end}", tf)
-                                    if ret and ret.__contains__("ep") and ret.__getitem__("ep").strip() == ep:
-                                        target_file = str(os.path.splitext(tf)[0]) + (".zh-cn" if flag else "") + str(os.path.splitext(file)[-1])
-                                        break
-                                    else:
-                                        continue
-                            else:
-                                target_file = os.path.splitext(tmp_file)[0] + (".zh-cn" if flag else "") + os.path.splitext(file)[-1]
-                            source_f = "{dir_path}{sep}{file}".format(dir_path = dir_name, file = file, sep=os.sep)
-                            target_f = "{dir_path}{sep}{target_file}".format(dir_path=dir_name, target_file=target_file, sep=os.sep)
-                            if target_file and not os.path.exists(target_f):
-                                log.info("【SYNC】字幕重命名: %s \n--> %s" % (source_f, target_f))
-                                if self.__sync_sys == OsType.WINDOWS:
-                                    os.rename(source_f, target_f)
-                                else:
-                                    os.system("mv \"%s\" \"%s\"" % (source_f, target_f))
-                            break
     def transfer_mon_files(self):
         """
         批量转移文件，由定时服务定期调用执行
@@ -350,11 +296,13 @@ class Sync(object):
                         files = []
                     target_path = target_info.get('target')
                     unknown_path = target_info.get('unknown')
+                    sync_mode = target_info.get('syncmod')
                     ret, ret_msg = self.filetransfer.transfer_media(in_from=SyncType.MON,
                                                                     in_path=src_path,
                                                                     files=files,
                                                                     target_dir=target_path,
-                                                                    unknown_dir=unknown_path)
+                                                                    unknown_dir=unknown_path,
+                                                                    sync_transfer_mode=sync_mode)
                     if not ret:
                         log.warn("【SYNC】%s转移失败：%s" % (path, ret_msg))
                 self.__need_sync_paths.pop(path)
@@ -366,17 +314,15 @@ class Sync(object):
         启动监控服务
         """
         self.__observer = []
-        for monpath in list(self.sync_dir_config.keys()) + list(self.monitor_sub_title_dirs):
+        for monpath in self.sync_dir_config.keys():
             if monpath and os.path.exists(monpath):
                 try:
-                    if self.__sync_sys == OsType.LINUX:
-                        # linux
-                        observer = Observer()
-                    elif self.__sync_sys == OsType.WINDOWS:
-                        observer = WindowsApiObserver()
+                    if self.__sync_sys == OsType.WINDOWS:
+                        # 考虑到windows的docker需要直接指定才能生效(修改配置文件为windows)
+                        observer = PollingObserver(timeout=10)
                     else:
-                        # 其他
-                        observer = PollingObserver()
+                        # 内部处理系统操作类型选择最优解
+                        observer = Observer(timeout=10)
                     self.__observer.append(observer)
                     observer.schedule(FileMonitorHandler(monpath, self), path=monpath, recursive=True)
                     observer.setDaemon(True)
@@ -404,16 +350,17 @@ class Sync(object):
             target_path = target_dirs.get('target')
             unknown_path = target_dirs.get('unknown')
             onlylink = target_dirs.get('onlylink')
+            sync_mode = target_dirs.get('syncmod')
             # 只做硬链接，不做识别重命名
             if onlylink:
                 for link_file in get_dir_files(monpath):
                     if is_sync_in_history(link_file, target_path):
                         continue
                     log.info("【SYNC】开始同步 %s" % link_file)
-                    ret = self.filetransfer.link_sync_files(in_from=SyncType.MON,
-                                                            src_path=monpath,
+                    ret = self.filetransfer.link_sync_files(src_path=monpath,
                                                             in_file=link_file,
-                                                            target_dir=target_path)
+                                                            target_dir=target_path,
+                                                            sync_transfer_mode=sync_mode)
                     if ret != 0:
                         log.warn("【SYNC】%s 同步失败，错误码：%s" % (link_file, ret))
                     else:
@@ -426,6 +373,7 @@ class Sync(object):
                     ret, ret_msg = self.filetransfer.transfer_media(in_from=SyncType.MON,
                                                                     in_path=path,
                                                                     target_dir=target_path,
-                                                                    unknown_dir=unknown_path)
+                                                                    unknown_dir=unknown_path,
+                                                                    sync_transfer_mode=sync_mode)
                     if not ret:
                         log.error("【SYNC】%s 处理失败：%s" % (monpath, ret_msg))
