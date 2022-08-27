@@ -2,18 +2,30 @@ import os
 import signal
 import sys
 import warnings
-
 import log
 from config import Config
-from pt.brushtask import BrushTask
-from service.run import run_monitor, stop_monitor
-from service.run import run_scheduler, stop_scheduler
-from utils.check_config import check_config
-from utils.functions import get_system, check_process
-from utils.types import OsType
+from app.brushtask import BrushTask
+from app.sync import run_monitor, stop_monitor
+from app.scheduler import run_scheduler, stop_scheduler
+from app.utils.check_config import check_config
+from app.utils.system_utils import SystemUtils
+from app.utils.types import OsType
 from version import APP_VERSION
 from web.app import FlaskApp
 from web.backend.web_utils import init_features
+
+
+# 添加第三方库入口
+third_party = ['feapder',
+               'qbittorrent-api',
+               'transmission-rpc',
+               'anitopy',
+               'plexapi',
+               'python-opensubtitles',
+               'cn2an']
+for third_party_lib in third_party:
+    sys.path.append(os.path.join(os.path.dirname(__file__), "third_party", third_party_lib).replace("\\", "/"))
+
 
 warnings.filterwarnings('ignore')
 
@@ -25,12 +37,17 @@ if is_windows_exe:
     from windows.trayicon import trayicon
 
     # 初始化环境变量
-    os.environ["NASTOOL_CONFIG"] = os.path.join(os.path.dirname(sys.executable), "config", "config.yaml")
-    os.environ["NASTOOL_LOG"] = os.path.join(os.path.dirname(sys.executable), "config", "logs")
+    os.environ["NASTOOL_CONFIG"] = os.path.join(os.path.dirname(sys.executable), "config", "config.yaml").replace("\\",
+                                                                                                                  "/")
+    os.environ["NASTOOL_LOG"] = os.path.join(os.path.dirname(sys.executable), "config", "logs").replace("\\", "/")
+    try:
+        os.makedirs(os.path.join(os.path.dirname(sys.executable), "config").replace("\\", "/"))
+    except Exception as err:
+        print(err)
 
 
 def sigal_handler(num, stack):
-    if get_system() == OsType.LINUX and check_process("supervisord"):
+    if SystemUtils.get_system() == OsType.LINUX and SystemUtils.check_process("supervisord"):
         print(str(stack))
         log.warn('捕捉到退出信号：%s，开始退出...' % num)
         # 停止定时服务
@@ -50,8 +67,6 @@ if __name__ == "__main__":
 
     # 检查配置文件
     config = Config()
-    if is_windows_exe:
-        config.get_config('app')['logpath'] = os.environ.get('NASTOOL_LOG')
     if not check_config(config):
         sys.exit()
 

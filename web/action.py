@@ -1,7 +1,9 @@
-import datetime
 import importlib
 import os.path
+import re
+import shutil
 import signal
+import subprocess
 from urllib import parse
 
 from flask_login import logout_user
@@ -9,42 +11,43 @@ from werkzeug.security import generate_password_hash
 
 import log
 from config import RMT_MEDIAEXT, Config, TMDB_IMAGE_W500_URL, TMDB_IMAGE_ORIGINAL_URL
-from message.channel.telegram import Telegram
-from message.channel.wechat import WeChat
-from message.send import Message
-from pt.brushtask import BrushTask
-from pt.client.qbittorrent import Qbittorrent
-from pt.client.transmission import Transmission
-from pt.douban import DouBan
-from pt.downloader import Downloader
-from pt.filterrules import FilterRule
-from pt.mediaserver.emby import Emby
-from pt.mediaserver.jellyfin import Jellyfin
-from pt.mediaserver.plex import Plex
-from pt.rss import Rss
-from pt.siteconf import RSS_SITE_GRAP_CONF
-from pt.sites import Sites
-from pt.subtitle import Subtitle
-from pt.torrent import Torrent
-from rmt.category import Category
-from rmt.doubanv2api.doubanapi import DoubanApi
-from rmt.filetransfer import FileTransfer
-from rmt.media import Media
-from rmt.metainfo import MetaInfo
-from service.run import stop_scheduler, stop_monitor, restart_scheduler, restart_monitor
-from service.scheduler import Scheduler
-from service.sync import Sync
-from utils.commons import EpisodeFormat, ProcessHandler
-from utils.functions import *
-from utils.http_utils import RequestUtils
-from utils.meta_helper import MetaHelper
-from utils.sqls import *
-from utils.sysmsg_helper import MessageCenter
-from utils.thread_helper import ThreadHelper
-from utils.types import MediaType, SearchType, DownloaderType, SyncType
+from app.message.channel.telegram import Telegram
+from app.message.channel.wechat import WeChat
+from app.message.message import Message
+from app.brushtask import BrushTask
+from app.downloader.client.qbittorrent import Qbittorrent
+from app.downloader.client.transmission import Transmission
+from app.douban import DouBan
+from app.downloader.downloader import Downloader
+from app.filterrules import FilterRule
+from app.mediaserver.server.emby import Emby
+from app.mediaserver.server.jellyfin import Jellyfin
+from app.mediaserver.server.plex import Plex
+from app.rss import Rss
+from app.sites.siteconf import RSS_SITE_GRAP_CONF
+from app.sites.sites import Sites
+from app.subtitle import Subtitle
+from app.utils.torrent import Torrent
+from app.media.category import Category
+from app.media.doubanv2api.doubanapi import DoubanApi
+from app.filetransfer import FileTransfer
+from app.media.media import Media
+from app.media.meta.metainfo import MetaInfo
+from app.scheduler import stop_scheduler, restart_scheduler
+from app.sync import stop_monitor, restart_monitor
+from app.scheduler import Scheduler
+from app.sync import Sync
+from app.utils.commons import EpisodeFormat, ProcessHandler
+from app.utils.http_utils import RequestUtils
+from app.media.meta_helper import MetaHelper
+from app.utils.path_utils import PathUtils
+from app.utils.sysmsg_helper import MessageCenter
+from app.utils.thread_helper import ThreadHelper
+from app.utils.types import SearchType, DownloaderType, SyncType
 from web.backend.douban_hot import DoubanHot
 from web.backend.search_torrents import search_medias_for_web, search_media_by_message
 from web.backend.subscribe import add_rss_subscribe
+from app.db.sqls import *
 
 
 class WebAction:
@@ -150,9 +153,9 @@ class WebAction:
         if not msg:
             return
         commands = {
-            "/ptr": {"func": Downloader().pt_removetorrents, "desp": "PT删种"},
-            "/ptt": {"func": Downloader().pt_transfer, "desp": "PT下载转移"},
-            "/pts": {"func": Sites().signin, "desp": "PT站签到"},
+            "/ptr": {"func": Downloader().pt_removetorrents, "desp": "删种"},
+            "/ptt": {"func": Downloader().pt_transfer, "desp": "下载文件转移"},
+            "/pts": {"func": Sites().signin, "desp": "站点签到"},
             "/rst": {"func": Sync().transfer_all_sync, "desp": "监控目录全量同步"},
             "/rss": {"func": Rss().rssdownload, "desp": "RSS订阅"},
             "/db": {"func": DouBan().sync, "desp": "豆瓣同步"}
@@ -168,7 +171,7 @@ class WebAction:
             ThreadHelper().start_thread(command.get("func"), ())
             Message().send_channel_msg(channel=in_from, title="%s 已启动" % command.get("desp"))
         else:
-            # PT检索或者添加订阅
+            # 站点检索或者添加订阅
             ThreadHelper().start_thread(search_media_by_message, (msg, in_from, user_id,))
 
     @staticmethod
@@ -229,6 +232,7 @@ class WebAction:
         """
         更新目录数据
         """
+
         def remove_sync_path(obj, key):
             if not isinstance(obj, list):
                 return []
@@ -351,8 +355,8 @@ class WebAction:
             msg_item.description = res[9]
             msg_item.size = res[10]
             msg_item.site = res[14]
-            msg_item.upload_volume_factor = float(res[15] or 1.0)
-            msg_item.download_volume_factor = float(res[16] or 1.0)
+            msg_item.upload_volume_factor = float(res[15])
+            msg_item.download_volume_factor = float(res[16])
             # 添加下载
             ret, ret_msg = Downloader().add_pt_torrent(url=res[0], mtype=msg_item.type, download_dir=dl_dir)
             if ret:
@@ -409,9 +413,9 @@ class WebAction:
                     speed = "已暂停"
                 else:
                     state = "Downloading"
-                    dlspeed = str_filesize(torrent.get('dlspeed'))
-                    eta = str_timelong(torrent.get('eta'))
-                    upspeed = str_filesize(torrent.get('upspeed'))
+                    dlspeed = StringUtils.str_filesize(torrent.get('dlspeed'))
+                    eta = StringUtils.str_timelong(torrent.get('eta'))
+                    upspeed = StringUtils.str_filesize(torrent.get('upspeed'))
                     speed = "%s%sB/s %s%sB/s %s" % (chr(8595), dlspeed, chr(8593), upspeed, eta)
                 # 进度
                 progress = round(torrent.get('progress') * 100)
@@ -419,8 +423,8 @@ class WebAction:
                 key = torrent.get('hash')
             elif Client == DownloaderType.Client115:
                 state = "Downloading"
-                dlspeed = str_filesize(torrent.get('peers'))
-                upspeed = str_filesize(torrent.get('rateDownload'))
+                dlspeed = StringUtils.str_filesize(torrent.get('peers'))
+                upspeed = StringUtils.str_filesize(torrent.get('rateDownload'))
                 speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
                 # 进度
                 progress = round(torrent.get('percentDone'), 1)
@@ -432,8 +436,8 @@ class WebAction:
                     speed = "已暂停"
                 else:
                     state = "Downloading"
-                    dlspeed = str_filesize(torrent.get('downloadSpeed'))
-                    upspeed = str_filesize(torrent.get('uploadSpeed'))
+                    dlspeed = StringUtils.str_filesize(torrent.get('downloadSpeed'))
+                    upspeed = StringUtils.str_filesize(torrent.get('uploadSpeed'))
                     speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
                 # 进度
                 progress = round(int(torrent.get('completedLength')) / int(torrent.get("totalLength")), 1) * 100
@@ -445,8 +449,8 @@ class WebAction:
                     speed = "已暂停"
                 else:
                     state = "Downloading"
-                    dlspeed = str_filesize(torrent.rateDownload)
-                    upspeed = str_filesize(torrent.rateUpload)
+                    dlspeed = StringUtils.str_filesize(torrent.rateDownload)
+                    upspeed = StringUtils.str_filesize(torrent.rateUpload)
                     speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
                 # 进度
                 progress = round(torrent.progress, 1)
@@ -620,7 +624,7 @@ class WebAction:
                     rm_parent_dir = True
                 else:
                     # 有集数的电视剧，删除对应的集数文件
-                    for dest_file in get_dir_files(dest_path):
+                    for dest_file in PathUtils.get_dir_files(dest_path):
                         file_meta_info = MetaInfo(os.path.basename(dest_file))
                         if file_meta_info.get_episode_list() and set(
                                 file_meta_info.get_episode_list()).issubset(set(meta_info.get_episode_list())):
@@ -629,7 +633,7 @@ class WebAction:
                             except Exception as e:
                                 log.console(str(e))
                     rm_parent_dir = True
-                if rm_parent_dir and not get_dir_files(os.path.dirname(dest_path), exts=RMT_MEDIAEXT):
+                if rm_parent_dir and not PathUtils.get_dir_files(os.path.dirname(dest_path), exts=RMT_MEDIAEXT):
                     # 没有媒体文件时，删除整个目录
                     try:
                         shutil.rmtree(os.path.dirname(dest_path))
@@ -1334,6 +1338,7 @@ class WebAction:
         brushtask_include = data.get("brushtask_include")
         brushtask_exclude = data.get("brushtask_exclude")
         brushtask_dlcount = data.get("brushtask_dlcount")
+        brushtask_peercount = data.get("brushtask_peercount")
         brushtask_seedtime = data.get("brushtask_seedtime")
         brushtask_seedratio = data.get("brushtask_seedratio")
         brushtask_seedsize = data.get("brushtask_seedsize")
@@ -1346,7 +1351,8 @@ class WebAction:
             "size": brushtask_torrent_size,
             "include": brushtask_include,
             "exclude": brushtask_exclude,
-            "dlcount": brushtask_dlcount
+            "dlcount": brushtask_dlcount,
+            "peercount": brushtask_peercount,
         }
         # 删除规则
         remove_rule = {
@@ -1410,8 +1416,8 @@ class WebAction:
             "seed_size": brushtask[0][11],
             "download_count": brushtask[0][12],
             "remove_count": brushtask[0][13],
-            "download_size": str_filesize(brushtask[0][14]),
-            "upload_size": str_filesize(brushtask[0][15]),
+            "download_size": StringUtils.str_filesize(brushtask[0][14]),
+            "upload_size": StringUtils.str_filesize(brushtask[0][15]),
             "lst_mod_date": brushtask[0][16],
             "site_url": "http://%s" % parse.urlparse(brushtask[0][17]).netloc if brushtask[0][17] else ""
         }
@@ -1506,7 +1512,12 @@ class WebAction:
             target = target + "/cgi-bin/message/send"
         target = "https://" + target
         start_time = datetime.datetime.now()
-        res = RequestUtils().get_res(target)
+        if target.find("themoviedb") != -1 \
+                or target.find("telegram") != -1 \
+                or target.find("fanart") != -1:
+            res = RequestUtils(proxies=Config().get_proxies(), timeout=5).get_res(target)
+        else:
+            res = RequestUtils(timeout=5).get_res(target)
         seconds = int((datetime.datetime.now() - start_time).microseconds / 1000)
         if not res:
             return {"res": False, "time": "%s 毫秒" % seconds}
@@ -1540,7 +1551,7 @@ class WebAction:
             return {"code": 1, "msg": "查询参数错误"}
 
         resp = {"code": 0}
-        _, _, site, upload, download = Sites().get_pt_site_statistics_history(data["days"]+1)
+        _, _, site, upload, download = Sites().get_pt_site_statistics_history(data["days"] + 1)
         resp.update({"site": site, "upload": upload, "download": download})
         return resp
 
@@ -1782,6 +1793,9 @@ class WebAction:
         if rules.get("dlcount"):
             rule_htmls.append('<span class="badge badge-outline text-orange me-1 mb-1" title="同时下载数量限制">同时下载: %s</span>'
                               % rules.get("dlcount"))
+        if rules.get("peercount"):
+            rule_htmls.append('<span class="badge badge-outline text-orange me-1 mb-1" title="当前做种人数限制">做种人数: %s</span>'
+                              % rules.get("peercount"))
         if rules.get("time"):
             times = rules.get("time").split("#")
             if times[0]:
@@ -1882,7 +1896,7 @@ class WebAction:
         """
         filename = data.get("file_name")
         if filename:
-            config_path = os.path.dirname(Config().get_config_path())
+            config_path = Config().get_config_path()
             file_path = os.path.join(config_path, filename)
             try:
                 shutil.unpack_archive(file_path, config_path, format='zip')

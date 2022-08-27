@@ -1,39 +1,43 @@
 import base64
 import logging
 import os.path
+import shutil
+import sqlite3
 import traceback
 import urllib
-import sqlite3
-from pathlib import Path
+import xml.dom.minidom
 from math import floor
+from pathlib import Path
 from urllib import parse
 
+import cn2an
 from flask import Flask, request, json, render_template, make_response, session, send_from_directory, send_file
 from flask_login import LoginManager, UserMixin, login_user, login_required, current_user
 from werkzeug.security import check_password_hash
-import xml.dom.minidom
 
 import log
-from pt.douban import DouBan
-from pt.filterrules import FilterRule
-from pt.indexer.builtin import BuiltinIndexer
-from pt.sites import Sites
-from pt.downloader import Downloader
-from pt.searcher import Searcher
-from rmt.media import Media
-from pt.media_server import MediaServer
-from rmt.metainfo import MetaInfo
 from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, TORRENT_SEARCH_PARAMS, TMDB_IMAGE_W500_URL
-from utils.functions import *
-from utils.meta_helper import MetaHelper
-from utils.security import Security
-from utils.sqls import *
-from utils.types import *
+from app.douban import DouBan
+from app.downloader.downloader import Downloader
+from app.filterrules import FilterRule
+from app.indexer.client.builtin import BuiltinIndexer
+from app.mediaserver.media_server import MediaServer
+from app.searcher import Searcher
+from app.sites.sites import Sites
+from app.utils.torrent import Torrent
+from app.media.media import Media
+from app.media.meta.metainfo import MetaInfo
+from web.backend.WXBizMsgCrypt3 import WXBizMsgCrypt
+from app.utils.dom_utils import DomUtils
+from app.media.meta_helper import MetaHelper
+from web.backend.security import Security
+from app.utils.system_utils import SystemUtils
 from version import APP_VERSION
 from web.action import WebAction
 from web.backend.web_utils import get_login_wallpaper
 from web.backend.webhook_event import WebhookEvent
-from utils.WXBizMsgCrypt3 import WXBizMsgCrypt
+from app.db.sqls import *
+from app.utils.types import *
 
 login_manager = LoginManager()
 login_manager.login_view = "login"
@@ -144,7 +148,7 @@ def create_flask_app(config):
     def login():
         # 判断当前的运营环境
         SystemFlag = 0
-        if get_system() == OsType.LINUX and check_process("supervisord"):
+        if SystemUtils.get_system() == OsType.LINUX and SystemUtils.check_process("supervisord"):
             SystemFlag = 1
         if request.method == 'GET':
             GoPage = request.args.get("next") or ""
@@ -253,7 +257,7 @@ def create_flask_app(config):
             for movie_path in movie_paths:
                 if not movie_path:
                     continue
-                used, total = get_used_of_partition(movie_path)
+                used, total = SystemUtils.get_used_of_partition(movie_path)
                 if "%s-%s" % (used, total) not in movie_space_list:
                     movie_space_list.append("%s-%s" % (used, total))
                     movie_used += used
@@ -267,7 +271,7 @@ def create_flask_app(config):
             for tv_path in tv_paths:
                 if not tv_path:
                     continue
-                used, total = get_used_of_partition(tv_path)
+                used, total = SystemUtils.get_used_of_partition(tv_path)
                 if "%s-%s" % (used, total) not in tv_space_list:
                     tv_space_list.append("%s-%s" % (used, total))
                     tv_used += used
@@ -281,7 +285,7 @@ def create_flask_app(config):
             for anime_path in anime_paths:
                 if not anime_path:
                     continue
-                used, total = get_used_of_partition(anime_path)
+                used, total = SystemUtils.get_used_of_partition(anime_path)
                 if "%s-%s" % (used, total) not in anime_space_list:
                     anime_space_list.append("%s-%s" % (used, total))
                     anime_used += used
@@ -454,7 +458,7 @@ def create_flask_app(config):
         SiteDict = []
         Indexers = Searcher().indexer.get_indexers() or []
         for item in Indexers:
-            SiteDict.append(item.name)
+            SiteDict.append({"id": item.id, "name": item.name})
 
         # 下载目录
         SaveDirs = WebAction().get_download_dirs()
@@ -488,13 +492,22 @@ def create_flask_app(config):
         use_douban_titles = config.get_config("laboratory").get("use_douban_titles")
         if SearchWord and NeedSearch:
             if use_douban_titles:
-                medias = DouBan().search_douban_medias(SearchWord)
+                _, key_word, season_num, episode_num, _, _ = Torrent.get_keyword_from_string(SearchWord)
+                medias = DouBan().search_douban_medias(keyword=key_word,
+                                                       season=season_num,
+                                                       episode=episode_num)
             else:
                 meta_info = MetaInfo(title=SearchWord)
                 tmdbinfos = Media().get_tmdb_infos(title=meta_info.get_name(), year=meta_info.year, num=20)
                 for tmdbinfo in tmdbinfos:
                     tmp_info = MetaInfo(title=SearchWord)
                     tmp_info.set_tmdb_info(tmdbinfo)
+                    if meta_info.type == MediaType.TV and tmp_info.type != MediaType.TV:
+                        continue
+                    if tmp_info.begin_season:
+                        tmp_info.title = "%s 第%s季" % (tmp_info.title, cn2an.an2cn(meta_info.begin_season, mode='low'))
+                    if tmp_info.begin_episode:
+                        tmp_info.title = "%s 第%s集" % (tmp_info.title, meta_info.begin_episode)
                     tmp_info.poster_path = TMDB_IMAGE_W500_URL % tmp_info.poster_path
                     medias.append(tmp_info)
         return render_template("medialist.html",
@@ -528,7 +541,7 @@ def create_flask_app(config):
     def tv_rss():
         RssItems = get_rss_tvs()
         RssSites = Sites().get_sites()
-        SearchSites = [item.name for item in Searcher().indexer.get_indexers() or []]
+        SearchSites = [item.name for item in Searcher().indexer.get_indexers()]
         RuleGroups = FilterRule().get_rule_groups()
         return render_template("rss/tv_rss.html",
                                Count=len(RssItems),
@@ -592,12 +605,12 @@ def create_flask_app(config):
                     speed = "已暂停"
                 else:
                     state = "Downloading"
-                    dlspeed = str_filesize(torrent.get('dlspeed'))
-                    upspeed = str_filesize(torrent.get('upspeed'))
+                    dlspeed = StringUtils.str_filesize(torrent.get('dlspeed'))
+                    upspeed = StringUtils.str_filesize(torrent.get('upspeed'))
                     if progress >= 100:
                         speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
                     else:
-                        eta = str_timelong(torrent.get('eta'))
+                        eta = StringUtils.str_timelong(torrent.get('eta'))
                         speed = "%s%sB/s %s%sB/s %s" % (chr(8595), dlspeed, chr(8593), upspeed, eta)
                 # 主键
                 key = torrent.get('hash')
@@ -606,8 +619,8 @@ def create_flask_app(config):
                 # 进度
                 progress = round(torrent.get('percentDone'), 1)
                 state = "Downloading"
-                dlspeed = str_filesize(torrent.get('peers'))
-                upspeed = str_filesize(torrent.get('rateDownload'))
+                dlspeed = StringUtils.str_filesize(torrent.get('peers'))
+                upspeed = StringUtils.str_filesize(torrent.get('rateDownload'))
                 speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
                 # 主键
                 key = torrent.get('info_hash')
@@ -616,8 +629,8 @@ def create_flask_app(config):
                 # 进度
                 progress = round(int(torrent.get('completedLength')) / int(torrent.get("totalLength")), 1) * 100
                 state = "Downloading"
-                dlspeed = str_filesize(torrent.get('downloadSpeed'))
-                upspeed = str_filesize(torrent.get('uploadSpeed'))
+                dlspeed = StringUtils.str_filesize(torrent.get('downloadSpeed'))
+                upspeed = StringUtils.str_filesize(torrent.get('uploadSpeed'))
                 speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
                 # 主键
                 key = torrent.get('gid')
@@ -628,8 +641,8 @@ def create_flask_app(config):
                     speed = "已暂停"
                 else:
                     state = "Downloading"
-                    dlspeed = str_filesize(torrent.rateDownload)
-                    upspeed = str_filesize(torrent.rateUpload)
+                    dlspeed = StringUtils.str_filesize(torrent.rateDownload)
+                    upspeed = StringUtils.str_filesize(torrent.rateUpload)
                     speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
                 # 进度
                 progress = round(torrent.progress)
@@ -769,8 +782,8 @@ def create_flask_app(config):
                 "seed_size": task[11],
                 "download_count": task[12],
                 "remove_count": task[13],
-                "download_size": str_filesize(task[14]),
-                "upload_size": str_filesize(task[15]),
+                "download_size": StringUtils.str_filesize(task[14]),
+                "upload_size": StringUtils.str_filesize(task[15]),
                 "lst_mod_date": task[16],
                 "site_url": "http://%s" % parse.urlparse(task[17]).netloc if task[17] else ""
             })
@@ -799,7 +812,7 @@ def create_flask_app(config):
         if pt:
             # RSS订阅
             pt_check_interval = pt.get('pt_check_interval')
-            if pt_check_interval:
+            if str(pt_check_interval).isdigit():
                 tim_rssdownload = str(round(int(pt_check_interval) / 60)) + " 分钟"
                 rss_state = 'ON'
             else:
@@ -817,7 +830,7 @@ def create_flask_app(config):
                 {'name': 'RSS订阅', 'time': tim_rssdownload, 'state': rss_state, 'id': 'rssdownload', 'svg': svg,
                  'color': "blue"})
 
-            # PT文件转移
+            # 下载文件转移
             pt_monitor = pt.get('pt_monitor')
             if pt_monitor:
                 tim_pttransfer = str(round(PT_TRANSFER_INTERVAL / 60)) + " 分钟"
@@ -835,10 +848,10 @@ def create_flask_app(config):
             </svg>
             '''
             scheduler_cfg_list.append(
-                {'name': 'PT下载转移', 'time': tim_pttransfer, 'state': sta_pttransfer, 'id': 'pttransfer', 'svg': svg,
+                {'name': '下载文件转移', 'time': tim_pttransfer, 'state': sta_pttransfer, 'id': 'pttransfer', 'svg': svg,
                  'color': "green"})
 
-            # PT删种
+            # 删种
             pt_seeding_config_time = pt.get('pt_seeding_time')
             if pt_seeding_config_time and pt_seeding_config_time != '0':
                 pt_seeding_time = "%s 天" % pt_seeding_config_time
@@ -854,10 +867,10 @@ def create_flask_app(config):
                 </svg>
                 '''
                 scheduler_cfg_list.append(
-                    {'name': 'PT删种', 'time': pt_seeding_time, 'state': sta_autoremovetorrents,
+                    {'name': '删种', 'time': pt_seeding_time, 'state': sta_autoremovetorrents,
                      'id': 'autoremovetorrents', 'svg': svg, 'color': "twitter"})
 
-            # PT自动签到
+            # 自动签到
             tim_ptsignin = pt.get('ptsignin_cron')
             if tim_ptsignin:
                 if str(tim_ptsignin).find(':') == -1:
@@ -872,7 +885,7 @@ def create_flask_app(config):
                 </svg>
                 '''
                 scheduler_cfg_list.append(
-                    {'name': 'PT站签到', 'time': tim_ptsignin, 'state': sta_ptsignin, 'id': 'ptsignin', 'svg': svg,
+                    {'name': '站点签到', 'time': tim_ptsignin, 'state': sta_ptsignin, 'id': 'ptsignin', 'svg': svg,
                      'color': "facebook"})
 
         # 目录同步
@@ -964,9 +977,11 @@ def create_flask_app(config):
            <path d="M12 15v2"></path>
         </svg>
         '''
-        targets = ["www.themoviedb.org", "api.themoviedb.org", "image.tmdb.org", "images.weserv.nl", "webservice.fanart.tv", "api.telegram.org", "qyapi.weixin.qq.com"]
+        targets = ["www.themoviedb.org", "api.themoviedb.org", "image.tmdb.org",
+                   "webservice.fanart.tv", "api.telegram.org", "qyapi.weixin.qq.com"]
         scheduler_cfg_list.append(
-            {'name': '网络连通性测试', 'time': '', 'state': 'OFF', 'id': 'nettest', 'svg': svg, 'color': 'cyan', "targets": targets})
+            {'name': '网络连通性测试', 'time': '', 'state': 'OFF', 'id': 'nettest', 'svg': svg, 'color': 'cyan',
+             "targets": targets})
 
         # 备份
         svg = '''
@@ -1396,11 +1411,13 @@ def create_flask_app(config):
             for f in os.listdir(d):
                 ff = os.path.join(d, f)
                 if os.path.isdir(ff):
-                    r.append('<li class="directory collapsed"><a rel="%s/">%s</a></li>' % (ff.replace("\\", "/"), f.replace("\\", "/")))
+                    r.append('<li class="directory collapsed"><a rel="%s/">%s</a></li>' % (
+                        ff.replace("\\", "/"), f.replace("\\", "/")))
                 else:
                     if ft != "HIDE_FILES_FILTER":
                         e = os.path.splitext(f)[1][1:]
-                        r.append('<li class="file ext_%s"><a rel="%s">%s</a></li>' % (e, ff.replace("\\", "/"), f.replace("\\", "/")))
+                        r.append('<li class="file ext_%s"><a rel="%s">%s</a></li>' % (
+                            e, ff.replace("\\", "/"), f.replace("\\", "/")))
             r.append('</ul>')
         except Exception as e:
             r.append('加载路径失败: %s' % str(e))
@@ -1469,9 +1486,9 @@ def create_flask_app(config):
                 dom_tree = xml.dom.minidom.parseString(sMsg.decode('UTF-8'))
                 root_node = dom_tree.documentElement
                 # 消息类型
-                msg_type = tag_value(root_node, "MsgType")
+                msg_type = DomUtils.tag_value(root_node, "MsgType")
                 # 用户ID
-                user_id = tag_value(root_node, "FromUserName")
+                user_id = DomUtils.tag_value(root_node, "FromUserName")
                 # 没的消息类型和用户ID的消息不要
                 if not msg_type or not user_id:
                     log.info("收到微信心跳报文...")
@@ -1480,7 +1497,7 @@ def create_flask_app(config):
                 content = ""
                 if msg_type == "event":
                     # 事件消息
-                    event_key = tag_value(root_node, "EventKey")
+                    event_key = DomUtils.tag_value(root_node, "EventKey")
                     if event_key:
                         log.info("点击菜单：%s" % event_key)
                         keys = event_key.split('#')
@@ -1488,7 +1505,7 @@ def create_flask_app(config):
                             content = WECHAT_MENU.get(keys[2])
                 elif msg_type == "text":
                     # 文本消息
-                    content = tag_value(root_node, "Content", default="")
+                    content = DomUtils.tag_value(root_node, "Content", default="")
                 if content:
                     # 处理消息内容
                     WebAction().handle_message_job(content, SearchType.WX, user_id)
@@ -1555,7 +1572,7 @@ def create_flask_app(config):
         """
         try:
             # 创建备份文件夹
-            config_path = Path(config.get_config_path()).parent
+            config_path = Path(config.get_config_path())
             backup_file = f"bk_{time.strftime('%Y%m%d%H%M%S')}"
             backup_path = config_path / "backup_file" / backup_file
             backup_path.mkdir(parents=True)
@@ -1592,11 +1609,11 @@ def create_flask_app(config):
         return send_file(zip_file)
 
     @App.route('/upload', methods=['POST'])
+    @login_required
     def upload():
         try:
             files = request.files['file']
-            config_path = Path(config.get_config_path()).parent
-            zip_file = config_path / files.filename
+            zip_file = Path(config.get_config_path()) / files.filename
             files.save(str(zip_file))
             return {"code": 0, "filepath": str(zip_file)}
         except Exception as e:

@@ -1,30 +1,31 @@
 import os
 import shutil
 from threading import Lock
+
 import ruamel.yaml
 from werkzeug.security import generate_password_hash
 
-from utils.functions import singleton
+from app.utils.commons import singleton
 
 # 菜单对应关系，配置WeChat应用中配置的菜单ID与执行命令的对应关系，需要手工修改
 # 菜单序号在https://work.weixin.qq.com/wework_admin/frame#apps 应用自定义菜单中维护，然后看日志输出的菜单序号是啥（按顺利能猜到的）....
-# 命令对应关系：/ptt PT文件转移；/ptr PT删种；/pts PT签到；/rst 目录同步；/rss RSS下载
+# 命令对应关系：/ptt 下载文件转移；/ptr 删种；/pts 站点签到；/rst 目录同步；/rss RSS下载
 WECHAT_MENU = {'_0_1': '/ptt', '_0_2': '/ptr', '_0_3': '/rss', '_0_4': '/rst', '_1_0': '/db', '_2_0': '/pts'}
-# 种子名/文件名要素分隔字符
-SPLIT_CHARS = r"\.|\s+|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|（|）"
+
 # 收藏了的媒体的目录名，名字可以改，在Emby中点击红星则会自动将电影转移到此分类下，需要在Emby Webhook中配置用户行为通知
 RMT_FAVTYPE = '精选'
 # 支持的媒体文件后缀格式
-RMT_MEDIAEXT = ['.mp4', '.mkv', '.ts', '.iso', '.rmvb', '.avi', '.mov', '.mpeg', '.mpg', '.wmv', '.3gp', '.asf', '.m4v', '.flv']
+RMT_MEDIAEXT = ['.mp4', '.mkv', '.ts', '.iso', '.rmvb', '.avi', '.mov', '.mpeg', '.mpg', '.wmv', '.3gp', '.asf', '.m4v',
+                '.flv']
 # 支持的字幕文件后缀格式
 RMT_SUBEXT = ['.srt', '.ass', '.ssa']
 # 电视剧动漫的分类genre_ids
 ANIME_GENREIDS = ['16']
 # 默认过滤的文件大小，150M
 RMT_MIN_FILESIZE = 150 * 1024 * 1024
-# PT删种检查时间间隔
+# 删种检查时间间隔
 AUTO_REMOVE_TORRENTS_INTERVAL = 1800
-# PT转移文件检查时间间隔，
+# 下载文件转移检查时间间隔，
 PT_TRANSFER_INTERVAL = 300
 # TMDB信息缓存定时保存时间
 METAINFO_SAVE_INTERVAL = 600
@@ -34,7 +35,7 @@ RELOAD_CONFIG_INTERVAL = 600
 SYNC_TRANSFER_INTERVAL = 60
 # RSS队列中处理时间间隔
 RSS_CHECK_INTERVAL = 300
-# PT站流量数据刷新时间间隔（小时）
+# 站点流量数据刷新时间间隔（小时）
 REFRESH_PT_DATA_INTERVAL = 6
 # 刷新订阅TMDB数据的时间间隔（小时）
 RSS_REFRESH_TMDB_INTERVAL = 6
@@ -98,7 +99,8 @@ class Config(object):
                 print("【ERROR】NASTOOL_CONFIG 环境变量未设置，程序无法工作，正在退出...")
                 quit()
             if not os.path.exists(self.__config_path):
-                cfg_tp_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config", "config.yaml")
+                cfg_tp_path = os.path.join(self.get_inner_config_path(), "config.yaml")
+                cfg_tp_path = cfg_tp_path.replace("\\", "/")
                 shutil.copy(cfg_tp_path, self.__config_path)
                 print("【ERROR】config.yaml 配置文件不存在，已将配置文件模板复制到配置目录...")
             with open(self.__config_path, mode='r', encoding='utf-8') as f:
@@ -142,4 +144,11 @@ class Config(object):
             return yaml.dump(new_cfg, f)
 
     def get_config_path(self):
-        return self.__config_path
+        return os.path.dirname(self.__config_path)
+
+    @staticmethod
+    def get_root_path():
+        return os.path.dirname(os.path.realpath(__file__))
+
+    def get_inner_config_path(self):
+        return os.path.join(self.get_root_path(), "config")

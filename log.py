@@ -5,8 +5,9 @@ import time
 from collections import deque
 from html import escape
 from logging.handlers import RotatingFileHandler
+
 from config import Config
-from utils.sysmsg_helper import MessageCenter
+from app.utils.sysmsg_helper import MessageCenter
 
 lock = threading.Lock()
 LOG_QUEUE = deque(maxlen=200)
@@ -31,16 +32,19 @@ class Logger:
         loglevel = self.__config.get_config('app').get('loglevel') or "info"
         self.logger.setLevel(level=self.__loglevels.get(loglevel))
         if logtype == "server":
-            logserver = self.__config.get_config('app').get('logserver')
-            logip = logserver.split(':')[0]
-            logport = int(logserver.split(':')[1])
+            logserver = self.__config.get_config('app').get('logserver', '').split(':')
+            logip = logserver[0]
+            if len(logserver) > 1:
+                logport = int(logserver[1] or '514')
+            else:
+                logport = 514
             log_server_handler = logging.handlers.SysLogHandler((logip, logport),
                                                                 logging.handlers.SysLogHandler.LOG_USER)
             log_server_handler.setFormatter(logging.Formatter('%(filename)s: %(message)s'))
             self.logger.addHandler(log_server_handler)
         else:
             # 记录日志到文件
-            logpath = self.__config.get_config('app').get('logpath') or ""
+            logpath = os.environ.get('NASTOOL_LOG') or self.__config.get_config('app').get('logpath') or ""
             if not os.path.exists(logpath):
                 os.makedirs(logpath)
             log_file_handler = RotatingFileHandler(filename=os.path.join(logpath, __name__ + ".txt"),

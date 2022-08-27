@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - version.py
+      - .github/workflows/build.yml
 
 jobs:
   create-release:
@@ -64,7 +65,7 @@ jobs:
         cd spk6/
         chmod 777 scripts/*
         sed -i 's/NASTOOL_VERSION/${{ env.app_version }}/g' INFO
-        tar -cvf nastool_dsm_6.x.spk *
+        tar -cvf nastool_dsm6.spk *
         cd ..
         rm -f package.tgz
         tar -zcvf package.tgz *.py *.txt service/ rmt/ message/ web/ ui/ wheelhouse/ config/ pt/ utils/
@@ -73,10 +74,10 @@ jobs:
         cd spk7/
         chmod 777 scripts/*
         sed -i 's/NASTOOL_VERSION/${{ env.app_version }}/g' INFO
-        tar -cvf nastool_dsm_7.x.spk *
+        tar -cvf nastool_dsm7.spk *
         cd ..
         mkdir spks
-        mv spk6/nastool_dsm_6.x.spk spk7/nastool_dsm_7.x.spk spks/
+        mv spk6/nastool_dsm6.spk spk7/nastool_dsm7.spk spks/
     - name: upload synology files
       uses: actions/upload-artifact@v3
       with:
@@ -111,6 +112,7 @@ jobs:
         copy .\windows\rely\hook-zhconv.py c:\hostedtoolcache\windows\python\3.10.6\x64\lib\site-packages\pyinstaller\hooks &&
         copy .\windows\rely\template.jinja2 c:\hostedtoolcache\windows\Python\3.10.6\x64\lib\site-packages\setuptools\_vendor\pyparsing\diagram &&
         xcopy .\web c:\hostedtoolcache\windows\python\3.10.6\x64\lib\site-packages\web\ /e &&
+        xcopy .\config c:\hostedtoolcache\windows\python\3.10.6\x64\lib\site-packages\config\ /e &&
         cd windows &&
         pyinstaller nas-tools.spec /
     - name: upload windows file
@@ -132,6 +134,15 @@ jobs:
         echo "release_id=$value" >> $GITHUB_ENV
         value=`cat release_informations/app_version.txt`
         echo "app_version=$value" >> $GITHUB_ENV
+    - name: rename
+      shell: bash
+      run: |
+        mkdir releases
+        cd synology
+        mv nastool_dsm6.spk /home/runner/work/nas-tools/nas-tools/releases/nastool_dsm6_v${{ env.app_version }}.spk
+        mv nastool_dsm7.spk /home/runner/work/nas-tools/nas-tools/releases/nastool_dsm7_v${{ env.app_version }}.spk
+        cd ../windows
+        mv nas-tools.exe /home/runner/work/nas-tools/nas-tools/releases/nastool_win_v${{ env.app_version }}.exe
     - name: Upload release asset
       uses: dwenegar/upload-release-assets@v1
       env:
@@ -139,8 +150,7 @@ jobs:
       with:
         release_id: ${{ env.release_id }}
         assets_path: |
-            /home/runner/work/nas-tools/nas-tools/synology/
-            /home/runner/work/nas-tools/nas-tools/windows/
+            /home/runner/work/nas-tools/nas-tools/releases/
     - name: Send telegram message (release informations)
       uses: appleboy/telegram-action@master
       with:
@@ -154,18 +164,18 @@ jobs:
     - name: Send telegram message synology 1
       uses: appleboy/telegram-action@master
       with:
-        to: ${{ secrets.TELEGRAM_XM }}
+        to: ${{ secrets.TELEGRAM_TO }}
         token: ${{ secrets.TELEGRAM_TOKEN }}
-        document: /home/runner/work/nas-tools/nas-tools/synology/nastool_dsm_6.x.spk
+        document: /home/runner/work/nas-tools/nas-tools/releases/nastool_dsm6_v${{ env.app_version }}.spk
     - name: Send telegram message synology 2
       uses: appleboy/telegram-action@master
       with:
-        to: ${{ secrets.TELEGRAM_XM }}
+        to: ${{ secrets.TELEGRAM_TO }}
         token: ${{ secrets.TELEGRAM_TOKEN }}
-        document: /home/runner/work/nas-tools/nas-tools/synology/nastool_dsm_7.x.spk
+        document: /home/runner/work/nas-tools/nas-tools/releases/nastool_dsm7_v${{ env.app_version }}.spk
     - name: Send telegram message windows
       uses: appleboy/telegram-action@master
       with:
-        to: ${{ secrets.TELEGRAM_XM }}
+        to: ${{ secrets.TELEGRAM_TO }}
         token: ${{ secrets.TELEGRAM_TOKEN }}
-        document: /home/runner/work/nas-tools/nas-tools/windows/nas-tools.exe
+        document: /home/runner/work/nas-tools/nas-tools/releases/nastool_win_v${{ env.app_version }}.exe

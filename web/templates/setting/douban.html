@@ -21,7 +21,7 @@
               <div class="col-xl-3">
                 <div class="mb-3">
                   <label class="form-label required">豆瓣用户ID <span class="form-help bg-red-lt" title="如有多个豆瓣用户ID，使用英文逗号,分隔" data-bs-toggle="tooltip">?</span></label>
-                  <input type="text" value="{{ Config.douban.users|join(',') }}" class="form-control" id="douban.users" placeholder="ID1,ID2,ID3" autocomplete="off">
+                  <input type="text" value="{% if Config.douban.users %}{{ Config.douban.users|join(',') }}{% endif %}" class="form-control" id="douban.users" placeholder="用户1,用户2,用户3" autocomplete="off">
                 </div>
               </div>
               <div class="col-xl-3">
@@ -56,7 +56,7 @@
                 <div class="mb-3">
                   <label class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="douban.auto_search" {% if Config.douban.auto_search %}checked{% endif %}>
-                      <span class="form-check-label">自动搜索下载 <span class="form-help bg-red-lt" title="开启后豆瓣同步的数据会自动进行PT聚合检索下载" data-bs-toggle="tooltip">?</span></span>
+                      <span class="form-check-label">自动搜索下载 <span class="form-help bg-red-lt" title="开启后豆瓣同步的数据会自动进行站点聚合检索下载" data-bs-toggle="tooltip">?</span></span>
                     </label>
                 </div>
               </div>
