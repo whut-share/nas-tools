@@ -10,13 +10,15 @@ from app.utils.commons import singleton
 # 菜单对应关系，配置WeChat应用中配置的菜单ID与执行命令的对应关系，需要手工修改
 # 菜单序号在https://work.weixin.qq.com/wework_admin/frame#apps 应用自定义菜单中维护，然后看日志输出的菜单序号是啥（按顺利能猜到的）....
 # 命令对应关系：/ptt 下载文件转移；/ptr 删种；/pts 站点签到；/rst 目录同步；/rss RSS下载
+from app.utils.string_utils import StringUtils
+
 WECHAT_MENU = {'_0_1': '/ptt', '_0_2': '/ptr', '_0_3': '/rss', '_0_4': '/rst', '_1_0': '/db', '_2_0': '/pts'}
 
 # 收藏了的媒体的目录名，名字可以改，在Emby中点击红星则会自动将电影转移到此分类下，需要在Emby Webhook中配置用户行为通知
 RMT_FAVTYPE = '精选'
 # 支持的媒体文件后缀格式
 RMT_MEDIAEXT = ['.mp4', '.mkv', '.ts', '.iso', '.rmvb', '.avi', '.mov', '.mpeg', '.mpg', '.wmv', '.3gp', '.asf', '.m4v',
-                '.flv']
+                '.flv', '.m2ts']
 # 支持的字幕文件后缀格式
 RMT_SUBEXT = ['.srt', '.ass', '.ssa']
 # 电视剧动漫的分类genre_ids
@@ -107,21 +109,33 @@ class Config(object):
                 try:
                     yaml = ruamel.yaml.YAML()
                     self.__config = yaml.load(f)
-                    if self.__config.get("app"):
-                        login_password = self.__config.get("app").get("login_password")
-                        if login_password and not login_password.startswith("[hash]"):
-                            self.__config['app']['login_password'] = "[hash]%s" % generate_password_hash(login_password)
-                            self.save_config(self.__config)
+                    overwrite_cofig = False
+                    login_password = self.__config.get("app", {}).get("login_password")
+                    if login_password and not login_password.startswith("[hash]"):
+                        self.__config['app']['login_password'] = "[hash]%s" % generate_password_hash(login_password)
+                        overwrite_cofig = True
+                    if not self.__config.get("laboratory"):
+                        self.__config['laboratory'] = {}
+                        overwrite_cofig = True
                     if not self.__config.get("security"):
                         self.__config['security'] = {
                             'media_server_webhook_allow_ip': {
                                 'ipv4': '0.0.0.0/0',
                                 'ipv6': '::/0'
+                            },
+                            'telegram_webhook_allow_ip': {
+                                'ipv4': '149.154.160.0/20,91.108.4.0/22',
+                                'ipv6': '::/0'
                             }
                         }
-
+                        overwrite_cofig = True
+                    if not self.__config.get("security", {}).get("subscribe_token"):
+                        self.__config['security']['subscribe_token'] = self.__config.get("laboratory",
+                                                                                         {}).get("subscribe_token") \
+                                                                       or StringUtils.generate_random_str()
+                        overwrite_cofig = True
+                    if overwrite_cofig:
                         self.save_config(self.__config)
-
                 except Exception as e:
                     print("【ERROR】配置文件 config.yaml 格式出现严重错误！请检查：%s" % str(e))
                     self.__config = {}

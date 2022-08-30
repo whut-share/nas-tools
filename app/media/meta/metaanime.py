@@ -1,4 +1,5 @@
 import re
+import traceback
 
 import anitopy
 import zhconv
@@ -22,6 +23,8 @@ class MetaAnime(MetaBase):
             return
         # 调用第三方模块识别动漫
         try:
+            # 字幕组信息会被预处理掉
+            anitopy_info_origin = anitopy.parse(title)
             title = self.__prepare_title(title)
             anitopy_info = anitopy.parse(title)
             if anitopy_info:
@@ -56,7 +59,8 @@ class MetaAnime(MetaBase):
                             lastword_type = "en"
                 if self.cn_name:
                     _, self.cn_name, _, _, _, _ = Torrent.get_keyword_from_string(self.cn_name)
-                    self.cn_name = zhconv.convert(self.cn_name, "zh-hans")
+                    if self.cn_name:
+                        self.cn_name = zhconv.convert(self.cn_name, "zh-hans")
                 if self.en_name:
                     self.en_name = self.en_name.strip()
                 # 年份
@@ -120,6 +124,8 @@ class MetaAnime(MetaBase):
                         self.resource_pix = re.split(r'[Xx]', self.resource_pix)[-1] + "p"
                     else:
                         self.resource_pix = self.resource_pix.lower()
+                # 制作组/字幕组
+                self.resource_team = anitopy_info_origin.get("release_group")
                 # 视频编码
                 self.video_encode = anitopy_info.get("video_term")
                 if isinstance(self.video_encode, list):
@@ -135,7 +141,7 @@ class MetaAnime(MetaBase):
             if not self.type:
                 self.type = MediaType.TV
         except Exception as e:
-            log.console(str(e))
+            log.console("%s - %s " % (str(e), traceback.format_exc()))
 
     @staticmethod
     def __prepare_title(title):

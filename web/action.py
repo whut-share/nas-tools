@@ -3,7 +3,6 @@ import os.path
 import re
 import shutil
 import signal
-import subprocess
 from urllib import parse
 
 from flask_login import logout_user
@@ -97,6 +96,7 @@ class WebAction:
             "brushtask_detail": self.__brushtask_detail,
             "add_downloader": self.__add_downloader,
             "delete_downloader": self.__delete_downloader,
+            "get_downloader": self.__get_downloader,
             "name_test": self.__name_test,
             "rule_test": self.__rule_test,
             "net_test": self.__net_test,
@@ -533,8 +533,7 @@ class WebAction:
                                                            media_type=media_type,
                                                            season=season,
                                                            episode=(EpisodeFormat(episode_format), need_fix_all),
-                                                           min_filesize=min_filesize
-                                                           )
+                                                           min_filesize=min_filesize)
         if succ_flag:
             if not need_fix_all and not logid:
                 update_transfer_unknown_state(path)
@@ -755,9 +754,10 @@ class WebAction:
         # 停止服务
         self.stop_service()
         # 安装依赖
-        subprocess.call(['pip', 'install', '-r', '/nas-tools/requirements.txt', ])
+        os.system('pip install -r /nas-tools/requirements.txt')
+        os.system('pip install -r /nas-tools/third_party.txt')
         # 升级
-        subprocess.call(['git', 'pull'])
+        os.system("git pull origin master")
         # 退出主进程
         self.shutdown_server()
 
@@ -899,6 +899,7 @@ class WebAction:
         over_edition = data.get("over_edition")
         rss_restype = data.get("rss_restype")
         rss_pix = data.get("rss_pix")
+        rss_team = data.get("rss_team")
         rss_rule = data.get("rss_rule")
         rssid = data.get("rssid")
         if name and mtype:
@@ -918,6 +919,7 @@ class WebAction:
                                                   over_edition=over_edition,
                                                   rss_restype=rss_restype,
                                                   rss_pix=rss_pix,
+                                                  rss_team=rss_team,
                                                   rss_rule=rss_rule,
                                                   rssid=rssid)
         return {"code": code, "msg": msg, "page": page, "name": name}
@@ -1429,6 +1431,7 @@ class WebAction:
         添加自定义下载器
         """
         test = data.get("test")
+        dl_id = data.get("id")
         dl_name = data.get("name")
         dl_type = data.get("type")
         user_config = {"host": data.get("host"),
@@ -1448,7 +1451,7 @@ class WebAction:
                 return {"code": 1}
         else:
             # 保存
-            insert_user_downloader(name=dl_name, dtype=dl_type, user_config=user_config, note=None)
+            update_user_downloader(did=dl_id, name=dl_name, dtype=dl_type, user_config=user_config, note=None)
             return {"code": 0}
 
     @staticmethod
@@ -1460,6 +1463,18 @@ class WebAction:
         if dl_id:
             delete_user_downloader(dl_id)
         return {"code": 0}
+
+    @staticmethod
+    def __get_downloader(data):
+        """
+        查询自定义下载器
+        """
+        dl_id = data.get("id")
+        if dl_id:
+            info = get_user_downloaders(dl_id)
+            return {"code": 0, "info": info[0] if info else None}
+        else:
+            return {"code": 1}
 
     @staticmethod
     def __name_test(data):
@@ -1481,6 +1496,7 @@ class WebAction:
             "category": media_info.category,
             "restype": media_info.resource_type,
             "pix": media_info.resource_pix,
+            "team": media_info.resource_team,
             "video_codec": media_info.video_encode,
             "audio_codec": media_info.audio_encode
         }}
@@ -1764,6 +1780,9 @@ class WebAction:
         if filter_map.get("pix"):
             filter_htmls.append(
                 '<span class="badge badge-outline text-orange me-1 mb-1">%s</span>' % filter_map.get("pix"))
+        if filter_map.get("team"):
+            filter_htmls.append(
+                '<span class="badge badge-outline text-blue me-1 mb-1">%s</span>' % filter_map.get("team"))        
         if filter_map.get("rule"):
             filter_htmls.append('<span class="badge badge-outline text-orange me-1 mb-1">%s</span>' %
                                 FilterRule().get_rule_groups(groupid=filter_map.get("rule")).get("name") or "")

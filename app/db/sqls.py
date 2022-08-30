@@ -59,7 +59,7 @@ def insert_search_results(media_items: list):
                 media_item.get_episode_string(),
                 media_item.get_season_episode_string(),
                 media_item.vote_average or "0",
-                media_item.get_backdrop_path(default=False),
+                media_item.get_backdrop_image(default=False),
                 media_item.get_poster_image(),
                 StringUtils.str_sql(media_item.tmdb_id),
                 StringUtils.str_sql(media_item.overview),
@@ -464,6 +464,7 @@ def insert_rss_movie(media_info: MetaBase,
                      over_edition=False,
                      rss_restype=None,
                      rss_pix=None,
+                     rss_team=None,
                      rss_rule=None):
     if not media_info:
         return False
@@ -475,9 +476,10 @@ def insert_rss_movie(media_info: MetaBase,
     desc = "#".join(["|".join(sites or []),
                      "|".join(search_sites or []),
                      "Y" if over_edition else "N",
-                     "%s@%s@%s" % (StringUtils.str_sql(rss_restype),
-                                   StringUtils.str_sql(rss_pix),
-                                   StringUtils.str_sql(rss_rule))])
+                     "@".join([StringUtils.str_sql(rss_restype),
+                               StringUtils.str_sql(rss_pix),
+                               StringUtils.str_sql(rss_rule),
+                               StringUtils.str_sql(rss_team)])])
     return update_by_sql(sql, (StringUtils.str_sql(media_info.title),
                                StringUtils.str_sql(media_info.year),
                                StringUtils.str_sql(media_info.tmdb_id),
@@ -588,6 +590,7 @@ def insert_rss_tv(media_info: MetaBase, total, lack=0, state="D",
                   over_edition=False,
                   rss_restype=None,
                   rss_pix=None,
+                  rss_team=None,
                   rss_rule=None,
                   match=False
                   ):
@@ -608,7 +611,8 @@ def insert_rss_tv(media_info: MetaBase, total, lack=0, state="D",
                      "Y" if over_edition else "N",
                      "@".join([StringUtils.str_sql(rss_restype),
                                StringUtils.str_sql(rss_pix),
-                               StringUtils.str_sql(rss_rule)])])
+                               StringUtils.str_sql(rss_rule),
+                               StringUtils.str_sql(rss_team)])])
     return update_by_sql(sql, (StringUtils.str_sql(media_info.title),
                                StringUtils.str_sql(media_info.year),
                                season_str,
@@ -1265,17 +1269,30 @@ def get_user_downloaders(did=None):
 
 
 # 新增自定义下载器
-def insert_user_downloader(name, dtype, user_config, note):
-    sql = "INSERT INTO SITE_BRUSH_DOWNLOADERS (NAME,TYPE,HOST,PORT,USERNAME,PASSWORD,SAVE_DIR,NOTE)" \
-          "VALUES (?,?,?,?,?,?,?,?)"
-    return update_by_sql(sql, (StringUtils.str_sql(name),
-                               dtype,
-                               StringUtils.str_sql(user_config.get("host")),
-                               StringUtils.str_sql(user_config.get("port")),
-                               StringUtils.str_sql(user_config.get("username")),
-                               StringUtils.str_sql(user_config.get("password")),
-                               StringUtils.str_sql(user_config.get("save_dir")),
-                               StringUtils.str_sql(note)))
+def update_user_downloader(did, name, dtype, user_config, note):
+    if did:
+        sql = "UPDATE SITE_BRUSH_DOWNLOADERS SET NAME=?, TYPE=?, HOST=?, PORT=?, USERNAME=?, PASSWORD=?, SAVE_DIR=?, NOTE=? " \
+              "WHERE ID=?"
+        return update_by_sql(sql, (StringUtils.str_sql(name),
+                                   dtype,
+                                   StringUtils.str_sql(user_config.get("host")),
+                                   StringUtils.str_sql(user_config.get("port")),
+                                   StringUtils.str_sql(user_config.get("username")),
+                                   StringUtils.str_sql(user_config.get("password")),
+                                   StringUtils.str_sql(user_config.get("save_dir")),
+                                   StringUtils.str_sql(note),
+                                   did))
+    else:
+        sql = "INSERT INTO SITE_BRUSH_DOWNLOADERS (NAME,TYPE,HOST,PORT,USERNAME,PASSWORD,SAVE_DIR,NOTE)" \
+              "VALUES (?,?,?,?,?,?,?,?)"
+        return update_by_sql(sql, (StringUtils.str_sql(name),
+                                   dtype,
+                                   StringUtils.str_sql(user_config.get("host")),
+                                   StringUtils.str_sql(user_config.get("port")),
+                                   StringUtils.str_sql(user_config.get("username")),
+                                   StringUtils.str_sql(user_config.get("password")),
+                                   StringUtils.str_sql(user_config.get("save_dir")),
+                                   StringUtils.str_sql(note)))
 
 
 # 删除自定义下载器

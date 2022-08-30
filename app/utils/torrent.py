@@ -164,9 +164,9 @@ class Torrent:
         """
         if not url:
             return None, "URL为空"
+        if url.startswith("magnet:"):
+            return url, "磁力链接"
         try:
-            if url.startswith("magnet:"):
-                return url, "磁力链接"
             req = RequestUtils(cookies=cookie).get_res(url=url)
             if req and req.status_code == 200:
                 if not req.content:
@@ -176,11 +176,11 @@ class Torrent:
                     return None, "不正确的种子文件"
                 return req.content, ""
             elif not req:
-                return url, "无法打开链接"
+                return url, "无法打开链接：%s" % url
             else:
-                return None, "状态码：%s" % req.status_code
+                return None, "下载种子出错，状态码：%s" % req.status_code
         except Exception as err:
-            return None, "%s" % str(err)
+            return None, "下载种子出现异常，%s" % str(err)
 
     @staticmethod
     def check_torrent_filter(meta_info: MetaBase, filter_args, uploadvolumefactor=None, downloadvolumefactor=None):
@@ -203,6 +203,12 @@ class Torrent:
                 return False
             if restype_re and not re.search(r"%s" % restype_re, meta_info.resource_pix, re.IGNORECASE):
                 return False
+        if filter_args.get("team"):
+            restype_re = filter_args.get("team")
+            if not meta_info.resource_team:
+                return False
+            if restype_re and not re.search(r"%s" % restype_re, meta_info.resource_team, re.IGNORECASE):
+                return False
         if filter_args.get("sp_state"):
             ul_factor, dl_factor = filter_args.get("sp_state").split()
             if uploadvolumefactor and ul_factor not in ("*", str(uploadvolumefactor)):
@@ -218,7 +224,7 @@ class Torrent:
     @staticmethod
     def get_rss_note_item(desc):
         """
-        解析订阅的NOTE字段，从中获取订阅站点、搜索站点、是否洗版、订阅质量、订阅分辨率、过滤规则等信息
+        解析订阅的NOTE字段，从中获取订阅站点、搜索站点、是否洗版、订阅质量、订阅分辨率、订阅制作组/字幕组、过滤规则等信息
         DESC字段组成：RSS站点#搜索站点#是否洗版(Y/N)#过滤条件，站点用|分隔多个站点，过滤条件用@分隔多个条件
         :param desc: RSS订阅DESC字段的值
         :return: 订阅站点、搜索站点、是否洗版、过滤字典
@@ -230,6 +236,7 @@ class Torrent:
         over_edition = False
         rss_restype = None
         rss_pix = None
+        rss_team = None
         rss_rule = None
         notes = str(desc).split('#')
         # 订阅站点
@@ -256,5 +263,7 @@ class Torrent:
                     rss_pix = filters[1]
                 if len(filters) > 2:
                     rss_rule = filters[2]
+                if len(filters) > 3:
+                    rss_team = filters[3]
 
-        return rss_sites, search_sites, over_edition, {"restype": rss_restype, "pix": rss_pix, "rule": rss_rule}
+        return rss_sites, search_sites, over_edition, {"restype": rss_restype, "pix": rss_pix, "rule": rss_rule, "team": rss_team}

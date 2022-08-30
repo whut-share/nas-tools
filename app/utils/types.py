@@ -27,6 +27,7 @@ class SearchType(Enum):
     RSS = "RSS订阅"
     OT = "手动下载"
     TG = "Telegram搜索"
+    API = "第三方API请求"
 
 
 class RmtMode(Enum):
@@ -34,8 +35,8 @@ class RmtMode(Enum):
     SOFTLINK = "软链接"
     COPY = "复制"
     MOVE = "移动"
-    RCLONECOPY = "rclone复制"
-    RCLONE = "rclone移动"
+    RCLONECOPY = "Rclone复制"
+    RCLONE = "Rclone移动"
 
 
 class MatchMode(Enum):

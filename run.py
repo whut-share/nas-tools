@@ -1,6 +1,43 @@
 import os
 import signal
 import sys
+
+# 添加第三方库入口,按首字母顺序，引入brushtask时涉及第三方库，需提前引入
+with open(os.path.join(os.path.dirname(__file__),
+                       "third_party.txt"), "r") as f:
+    third_party = f.readlines()
+    for third_party_lib in third_party:
+        sys.path.append(os.path.join(os.path.dirname(__file__),
+                                     "third_party",
+                                     third_party_lib.strip()).replace("\\", "/"))
+
+# 运行环境判断
+is_windows_exe = getattr(sys, 'frozen', False) and (os.name == "nt")
+if is_windows_exe:
+    # 托盘相关库
+    import threading
+    from windows.trayicon import trayicon
+    # 初始化环境变量
+    os.environ["NASTOOL_CONFIG"] = os.path.join(os.path.dirname(sys.executable),
+                                                "config",
+                                                "config.yaml").replace("\\", "/")
+    os.environ["NASTOOL_LOG"] = os.path.join(os.path.dirname(sys.executable),
+                                             "config",
+                                             "logs").replace("\\", "/")
+    try:
+        config_dir = os.path.join(os.path.dirname(sys.executable),
+                                  "config").replace("\\", "/")
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+        feapder_tmpdir = os.path.join(os.path.dirname(__file__),
+                                      "feapder",
+                                      "network",
+                                      "proxy_file").replace("\\", "/")
+        if not os.path.exists(feapder_tmpdir):
+            os.makedirs(feapder_tmpdir)
+    except Exception as err:
+        print(err)
+
 import warnings
 import log
 from config import Config
@@ -14,36 +51,7 @@ from version import APP_VERSION
 from web.app import FlaskApp
 from web.backend.web_utils import init_features
 
-
-# 添加第三方库入口
-third_party = ['feapder',
-               'qbittorrent-api',
-               'transmission-rpc',
-               'anitopy',
-               'plexapi',
-               'python-opensubtitles',
-               'cn2an']
-for third_party_lib in third_party:
-    sys.path.append(os.path.join(os.path.dirname(__file__), "third_party", third_party_lib).replace("\\", "/"))
-
-
 warnings.filterwarnings('ignore')
-
-# 运行环境判断
-is_windows_exe = getattr(sys, 'frozen', False) and (os.name == "nt")
-if is_windows_exe:
-    # 托盘相关库
-    import threading
-    from windows.trayicon import trayicon
-
-    # 初始化环境变量
-    os.environ["NASTOOL_CONFIG"] = os.path.join(os.path.dirname(sys.executable), "config", "config.yaml").replace("\\",
-                                                                                                                  "/")
-    os.environ["NASTOOL_LOG"] = os.path.join(os.path.dirname(sys.executable), "config", "logs").replace("\\", "/")
-    try:
-        os.makedirs(os.path.join(os.path.dirname(sys.executable), "config").replace("\\", "/"))
-    except Exception as err:
-        print(err)
 
 
 def sigal_handler(num, stack):
@@ -86,7 +94,7 @@ if __name__ == "__main__":
     # 启动刷流服务
     BrushTask()
 
-    # 启动托盘
+    # Windows启动托盘
     if is_windows_exe:
         homepage_port = config.get_config('app').get('web_port')
         log_path = os.environ.get("NASTOOL_LOG")
