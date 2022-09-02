@@ -22,9 +22,21 @@ RUN apk add --no-cache \
        tzdata \
        su-exec \
        nginx \
+       zip \
+       curl \
+       bash \
+       fuse \
+       openssl-dev --repository https://pkgs.alpinelinux.org/package/edge/main \
+       libffi-dev --repository https://pkgs.alpinelinux.org/package/edge/main \
+       cargo --repository https://pkgs.alpinelinux.org/package/edge/community \
     && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && ln -sf /usr/bin/python3 /usr/bin/python \
+    && pip install --upgrade pip setuptools wheel \
+    && pip --default-timeout=300 install --ignore-installed -i https://pypi.tuna.tsinghua.edu.cn/simple -r https://raw.githubusercontent.com/JohnZp/nas-tools/master/requirements.txt \
+    && pip --default-timeout=300 install --ignore-installed -i https://pypi.tuna.tsinghua.edu.cn/simple -r https://raw.githubusercontent.com/JohnZp/nas-tools/master/third_party.txt \
+    && curl https://rclone.org/install.sh | bash \
+    && apk del openssl-dev libffi-dev cargo \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "${WORKDIR}/" > /usr/lib/python${python_ver%.*}/site-packages/nas-tools.pth \
     && echo 'fs.inotify.max_user_watches=524288' >> /etc/sysctl.conf \
@@ -32,16 +44,10 @@ RUN apk add --no-cache \
     && git config --global pull.ff only \
     && git config --global http.version HTTP/1.1 \
     && git config --global http.postBuffer 524288000 \
-    && git clone -b master ${REPO_URL} --depth=1 ${WORKDIR} \
+    && git clone -b master ${REPO_URL} --depth=1 ${WORKDIR} --recurse-submodule \
     && git config --global --add safe.directory ${WORKDIR} \
-    && pip install --upgrade pip setuptools wheel \
-    && pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt \
-    && mkdir -p /var/log/supervisor \
     && mkdir -p /etc/nginx/http.d \
-    && cp ${WORKDIR}/docker/nas_tools.conf /etc/nginx/http.d \
-    && rm -rf \
-       /tmp/* \
-       /root/.cache \
-       /var/cache/apk/*
+    && cp ${WORKDIR}/docker/nas_tools.conf /etc/nginx/http.d  \
+    && rm -rf /tmp/* /root/.cache /var/cache/apk/*
 VOLUME ["/config"]
 ENTRYPOINT ["/nas-tools/docker/entrypoint.sh"]
