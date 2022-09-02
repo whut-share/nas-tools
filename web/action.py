@@ -1491,8 +1491,10 @@ class WebAction:
         if not name:
             return {"code": -1}
         media_info = Media().get_media_info(title=name)
+        if not media_info:
+            return {"code": 0, "data": {"name": "无法识别"}}
         return {"code": 0, "data": {
-            "type": media_info.type.value,
+            "type": media_info.type.value if media_info.type else "",
             "name": media_info.get_name(),
             "title": media_info.title,
             "year": media_info.year,

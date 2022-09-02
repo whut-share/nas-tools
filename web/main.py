@@ -17,7 +17,7 @@ from werkzeug.security import check_password_hash
 
 import log
 from app.message.message import Message
-from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, TORRENT_SEARCH_PARAMS, TMDB_IMAGE_W500_URL, Config
+from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, TORRENT_SEARCH_PARAMS, TMDB_IMAGE_W500_URL
 from app.douban import DouBan
 from app.downloader.downloader import Downloader
 from app.filterrules import FilterRule
@@ -28,6 +28,7 @@ from app.sites.sites import Sites
 from app.utils.torrent import Torrent
 from app.media.media import Media
 from app.media.meta.metainfo import MetaInfo
+from web.apiv1 import apiv1, authorization
 from web.backend.WXBizMsgCrypt3 import WXBizMsgCrypt
 from app.utils.dom_utils import DomUtils
 from app.media.meta_helper import MetaHelper
@@ -66,6 +67,9 @@ def create_flask_app(config):
     applog = logging.getLogger('werkzeug')
     applog.setLevel(logging.ERROR)
     login_manager.init_app(App)
+
+    # API注册
+    App.register_blueprint(apiv1, url_prefix="/api/v1")
 
     @App.after_request
     def add_header(r):
@@ -737,7 +741,7 @@ def create_flask_app(config):
             days=2)
 
         # 站点用户数据
-        SiteUserStatistics = Sites().get_pt_site_user_statistics()
+        SiteUserStatistics = Sites().get_site_user_statistics()
 
         return render_template("site/statistics.html",
                                CurrentDownload=CurrentDownload,
@@ -1566,8 +1570,7 @@ def create_flask_app(config):
     # Jellyseerr Overseerr订阅接口
     @App.route('/subscribe', methods=['POST', 'GET'])
     def subscribe():
-        authorization = request.headers.get("Authorization")
-        if not authorization or authorization != Config().get_config("security").get("subscribe_token"):
+        if not authorization():
             return make_response("认证失败！", 400)
         req_json = request.get_json()
         if not req_json:
