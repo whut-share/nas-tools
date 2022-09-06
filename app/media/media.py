@@ -12,7 +12,7 @@ from app.utils.path_utils import PathUtils
 from config import Config
 from app.media.constants import *
 from app.media.meta.metainfo import MetaInfo
-from app.media.tmdbv3api import TMDb, Search, Movie, TV
+from app.media.tmdbv3api import TMDb, Search, Movie, TV, Person
 from app.media.tmdbv3api.exceptions import TMDbException
 from app.utils.cache_manager import cacheman
 from app.utils.commons import EpisodeFormat
@@ -29,6 +29,7 @@ class Media:
     search = None
     movie = None
     tv = None
+    person = None
     meta = None
     __rmt_match_mode = None
     __search_keyword = None
@@ -50,6 +51,7 @@ class Media:
                 self.search = Search()
                 self.movie = Movie()
                 self.tv = TV()
+                self.person = Person()
                 self.meta = MetaHelper()
             rmt_match_mode = app.get('rmt_match_mode', 'normal')
             if rmt_match_mode:
@@ -445,7 +447,7 @@ class Media:
                 else:
                     log.info("【META】%s TMDB网站未查询到媒体信息！" % file_media_name)
             except Exception as err:
-                print(err)
+                log.console(err)
         return {}
 
     def get_tmdb_info(self, mtype: MediaType = None, title=None, year=None, tmdbid=None, language=None):
@@ -457,6 +459,9 @@ class Media:
         :param tmdbid: TMDB的ID，有tmdbid时优先使用tmdbid，否则使用年份和标题
         :param language: 语种
         """
+        if not self.tmdb:
+            log.error("【META】TMDB API Key 未设置！")
+            return None
         if language:
             self.tmdb.language = language
         else:
@@ -500,6 +505,9 @@ class Media:
         """
         查询名称中有关键字的所有的TMDB信息并返回
         """
+        if not self.tmdb:
+            log.error("【META】TMDB API Key 未设置！")
+            return []
         if not title:
             return []
         if not mtype and not year:
@@ -577,9 +585,10 @@ class Media:
         :param chinese: 原标题为英文时是否从别名中检索中文名称
         :return: 带有TMDB信息的MetaInfo对象
         """
-        if not title:
+        if not self.tmdb:
+            log.error("【META】TMDB API Key 未设置！")
             return None
-        if not self.meta:
+        if not title:
             return None
         # 识别
         meta_info = MetaInfo(title, subtitle=subtitle)
@@ -674,9 +683,10 @@ class Media:
         :return: 带有TMDB信息的每个文件对应的MetaInfo对象字典
         """
         # 存储文件路径与媒体的对应关系
+        if not self.tmdb:
+            log.error("【META】TMDB API Key 未设置！")
+            return {}
         return_media_infos = {}
-        if not self.meta:
-            return return_media_infos
         # 不是list的转为list
         if not isinstance(file_list, list):
             file_list = [file_list]
@@ -1111,7 +1121,7 @@ class Media:
                     titles_info = self.tv.alternative_titles(tmdbid) or {}
                     alternative_titles = titles_info.get("results", [])
             except Exception as err:
-                print(err)
+                log.console(err)
                 return None
         for alternative_title in alternative_titles:
             iso_3166_1 = alternative_title.get("iso_3166_1")
@@ -1122,3 +1132,27 @@ class Media:
         if tmdbinfo:
             return tmdbinfo.get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE else tmdbinfo.get("name")
         return None
+
+    def get_person_chinese_name(self, person_id):
+        """
+        查询人物中文名称
+        """
+        if not self.person:
+            return ""
+        alter_names = []
+        name = ""
+        try:
+            aka_names = self.person.details(person_id).get("also_known_as", []) or []
+        except Exception as err:
+            log.console(err)
+            return ""
+        for aka_name in aka_names:
+            if StringUtils.is_chinese(aka_name):
+                alter_names.append(aka_name)
+        if len(alter_names) == 1:
+            name = alter_names[0]
+        elif len(alter_names) > 1:
+            for alter_name in alter_names:
+                if alter_name == zhconv.convert(alter_name, 'zh-hans'):
+                    name = alter_name
+        return name

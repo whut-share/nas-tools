@@ -2,6 +2,9 @@ import datetime
 import time
 
 import log
+from app.indexer.client.rarbg import Rarbg
+from app.indexer.indexer_conf import IndexerConf
+from app.sites.siteconf import get_public_sites
 from config import Config
 from app.indexer.indexer import IIndexer
 from app.indexer.client.spider import TorrentSpider
@@ -29,11 +32,11 @@ class BuiltinIndexer(IIndexer):
         ret_indexers = []
         indexer_sites = Config().get_config("pt").get("indexer_sites") or []
         for site in Sites().get_sites():
-            if not site.get("cookie"):
-                continue
             if not site.get("rssurl") and not site.get("signurl"):
                 continue
-            indexer = IndexerHelper().get_indexer(site.get("rssurl") or site.get("signurl"),
+            if not site.get("cookie"):
+                continue
+            indexer = IndexerHelper().get_indexer(site.get("signurl") or site.get("rssurl"),
                                                   site.get("cookie"),
                                                   site.get("name"))
             if indexer:
@@ -41,10 +44,15 @@ class BuiltinIndexer(IIndexer):
                     continue
                 indexer.name = site.get("name")
                 ret_indexers.append(indexer)
+        for site in get_public_sites():
+            indexer = IndexerHelper().get_indexer(site)
+            if check and indexer_sites and indexer.id not in indexer_sites:
+                continue
+            ret_indexers.append(indexer)
         return ret_indexers
 
     def search(self, order_seq,
-               indexer,
+               indexer: IndexerConf,
                key_word,
                filter_args: dict,
                match_type,
@@ -61,14 +69,18 @@ class BuiltinIndexer(IIndexer):
         if indexer_sites and indexer.id not in indexer_sites:
             return []
 
-        if filter_args.get("site") and indexer.id not in filter_args.get("site"):
+        if filter_args.get("site") and indexer.name not in filter_args.get("site"):
             return []
         # 计算耗时
         start_time = datetime.datetime.now()
         log.info(f"【{self.index_type}】开始检索Indexer：{indexer.name} ...")
         # 特殊符号处理
         search_word = StringUtils.handler_special_chars(text=key_word, replace_word=" ", allow_space=True)
-        result_array = self.__spider_search(keyword=search_word, indexer=indexer)
+        if indexer.id == "rarbg":
+            imdb_id = match_media.imdb_id if match_media else None
+            result_array = Rarbg(cookies=indexer.cookie).search(keyword=search_word, indexer=indexer, imdb_id=imdb_id)
+        else:
+            result_array = self.__spider_search(keyword=search_word, indexer=indexer)
         if len(result_array) == 0:
             log.warn(f"【{self.index_type}】{indexer.name} 未检索到数据")
             ProcessHandler().update(text=f"{indexer.name} 未检索到数据")
