@@ -26,9 +26,7 @@ RUN apk add --no-cache \
        curl \
        bash \
        fuse \
-       openssl-dev --repository https://pkgs.alpinelinux.org/package/edge/main \
        libffi-dev --repository https://pkgs.alpinelinux.org/package/edge/main \
-       cargo --repository https://pkgs.alpinelinux.org/package/edge/community \
     && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo "${TZ}" > /etc/timezone \
     && ln -sf /usr/bin/python3 /usr/bin/python \
@@ -36,7 +34,7 @@ RUN apk add --no-cache \
     && pip --default-timeout=300 install --ignore-installed -i https://pypi.tuna.tsinghua.edu.cn/simple -r https://raw.githubusercontent.com/JohnZp/nas-tools/master/requirements.txt \
     && pip --default-timeout=300 install --ignore-installed -i https://pypi.tuna.tsinghua.edu.cn/simple -r https://raw.githubusercontent.com/JohnZp/nas-tools/master/third_party.txt \
     && curl https://rclone.org/install.sh | bash \
-    && apk del openssl-dev libffi-dev cargo \
+    && apk del libffi-dev \
     && python_ver=$(python3 -V | awk '{print $2}') \
     && echo "${WORKDIR}/" > /usr/lib/python${python_ver%.*}/site-packages/nas-tools.pth \
     && echo 'fs.inotify.max_user_watches=524288' >> /etc/sysctl.conf \
