@@ -64,18 +64,6 @@
       right: 0 !important;
       top: 0 !important;
     }
-
-    .navbar-light {
-      backdrop-filter: blur(15px) !important;
-      -webkit-backdrop-filter: blur(15px) !important;
-      background-color: rgba(255,255,255,0.7) !important;
-    }
-
-    .theme-dark .navbar {
-      backdrop-filter: blur(15px) !important;
-      -webkit-backdrop-filter: blur(15px) !important;
-      background-color: rgba(30,41,59,0.8) !important;
-    }
     
     @media (max-width: 991.98px) {
       .navbar ul.navbar-nav {
@@ -85,7 +73,7 @@
     }
 
     .page-wrapper {
-      margin-top: calc(env(safe-area-inset-top) + 56px) !important;
+      margin-top: calc(env(safe-area-inset-top) + 50px) !important;
       height: 100% !important;
       overflow: scroll !important;
     }
@@ -173,7 +161,7 @@
                   <line x1="21" y1="21" x2="15" y2="15" />
                 </svg>
               </span>
-              <input type="text" value="" class="form-control home_search_word" placeholder="搜索...">
+              <input type="text" value="" class="form-control home_search_word" placeholder="搜索/订阅...">
             </div>
           </div>
           <ul class="navbar-nav pt-lg-3">
@@ -255,6 +243,9 @@
                 <a class="dropdown-item" href="javascript:void(0)" onclick="navmenu('recommend?t=dbhm')">
                   豆瓣热门电影
                 </a>
+                <a class="dropdown-item" href="javascript:void(0)" onclick="navmenu('recommend?t=dbtop')">
+                  豆瓣电影TOP250
+                </a>
                 <a class="dropdown-item" href="javascript:void(0)" onclick="navmenu('recommend?t=dbht')">
                   豆瓣热门电视剧
                 </a>
@@ -318,6 +309,9 @@
                 </a>
                 <a class="dropdown-item" href="javascript:void(0)" onclick="navmenu('tv_rss')">
                   电视剧订阅
+                </a>
+                <a class="dropdown-item" href="javascript:void(0)" onclick="navmenu('user_rss')">
+                  自定义订阅
                 </a>
                 <a class="dropdown-item" href="javascript:void(0)" onclick="navmenu('rss_calendar')">
                   订阅日历
@@ -593,7 +587,7 @@
                   <line x1="21" y1="21" x2="15" y2="15" />
                 </svg>
               </span>
-              <input type="text" value="" class="form-control home_search_word" placeholder="搜索…" aria-label="资源搜索">
+              <input type="text" value="" class="form-control home_search_word" placeholder="搜索/订阅…" aria-label="资源搜索/订阅">
             </div>
           </div>
         </div>
@@ -799,10 +793,11 @@
             <a href="#" target="_blank" class="card-btn" id="system_media_url_btn">
               详情
             </a>
-            <a href="javascript:void(0)" class="card-btn" id="system_media_rss_btn">
+            <a href="javascript:void(0)" data-bs-toggle="dropdown" class="dropdown-toggle card-btn" id="system_media_rss_btn">
               订阅
             </a>
-            <a href="javascript:void(0)" class="card-btn" id="system_media_search_btn">
+            <div class="dropdown-menu" id="system_media_rss_dropdown"></div>
+            <a href="javascript:void(0)" class="card-btn" id="system_media_search_btn" style="border-left:1px solid var(--tblr-border-color)">
               搜索
             </a>
             <a href="javascript:void(0)" class="card-btn" data-bs-dismiss="modal">
@@ -832,6 +827,31 @@
       </div>
     </div>
   </div>
+  <div class="modal modal-blur fade" id="system-rss-seasons" tabindex="-1" role="dialog" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="card border-top-0">
+          <div class="card-header">
+            <h5 class="modal-title">选择订阅季</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col">
+                <div class="mb-3">
+                  <div class="form-selectgroup" id="system_rss_seasons_group">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <a href="javascript:void(0)" id="system_rss_seasons_btn" class="btn btn-primary">确定</a>
+        </div>
+      </div>
+    </div>
+  </div>
   <script src="../static/js/libs/list.min.js"></script>
   <script src="../static/js/jquery-3.3.1.min.js"></script>
   <script src="../static/js/tabler.min.js"></script>
@@ -856,14 +876,20 @@
 
     //刷新进度及文件
     var refresh_process_flag = false;
+    var refresh_fail_count = 0;
     function refresh_process () {
-      ajax_post("refresh_process", {}, function (ret) {
-        if (ret.code == 0) {
+      if(!refresh_process_flag){
+        return;
+      }
+      ajax_post("refresh_process", {type:"search"}, function (ret) {
+        if (ret.code == 0 && ret.value <= 100) {
           $("#modal_process_bar").attr("style", "width: " + ret.value + "%");
           $("#modal_process_bar").attr("aria-valuenow", ret.value);
           $("#modal_process_text").text(ret.text);
+        }else{
+          refresh_fail_count = refresh_fail_count + 1;
         }
-        if ((ret.code == 0 || ret.code == 1) && refresh_process_flag) {
+        if(refresh_fail_count < 5 ){
           setTimeout("refresh_process()", 200);
         }
       });
@@ -882,6 +908,7 @@
       $("#modal-process").modal("show");
       //刷新进度
       refresh_process_flag = true;
+      refresh_fail_count = 0;
       refresh_process();
     }
 
@@ -967,9 +994,14 @@
             $("#system_media_vote").show();
           }
           //订阅按钮、搜索按钮
+          if($("#system_media_rss_dropdown").hasClass("show")){
+            $("#system_media_rss_btn").dropdown("toggle");
+          }
           if (ret.rssid) {
             //取消订阅按钮
-            $("#system_media_rss_btn").text("删除订阅");
+            $("#system_media_rss_btn").text("取消订阅");
+            $("#system_media_rss_btn").removeAttr("data-bs-toggle");
+            $("#system_media_rss_btn").removeClass("dropdown-toggle");
             $("#system_media_rss_btn").attr("href", 'javascript:remove_rss_media("' + ret.title + '","' + ret.year + '","' + ret.type + '","' + ret.rssid + '","' + ret.page + '")');
             //刷新和编辑按钮
             if (ret.page.startsWith("movie_rss") || ret.page.startsWith("tv_rss")) {
@@ -982,7 +1014,10 @@
               $("#system_media_url_btn").removeAttr("target");
               $("#system_media_url_btn").attr("href", "javascript:show_edit_rss_media_modal('" + ret.rssid + "')");
             } else {
-              $("#system_media_search_btn").hide();
+              //搜索按钮
+              $("#system_media_search_btn").text("搜索");
+              $("#system_media_search_btn").attr("href", 'javascript:search_mediainfo_media("' + ret.tmdbid + '", "' + ret.doubanid + '", "' + ret.title + '", "' + ret.type_str + '")');
+              $("#system_media_search_btn").show();
               //详情按钮
               $("#system_media_url_btn").text("详情");
               $("#system_media_url_btn").attr("target", "_blank");
@@ -991,7 +1026,21 @@
           } else {
             //订阅按钮
             $("#system_media_rss_btn").text("订阅");
-            $("#system_media_rss_btn").attr("href", 'javascript:add_rss_media("' + ret.title + '","' + ret.year + '","' + ret.type + '","' + ret.tmdbid + '","' + ret.doubanid + '","' + ret.page + '")');
+            if(ret.seasons.length == 0){
+              $("#system_media_rss_btn").removeAttr("data-bs-toggle");
+              $("#system_media_rss_btn").removeClass("dropdown-toggle");
+              $("#system_media_rss_btn").attr("href", 'javascript:add_rss_media("' + ret.title + '","' + ret.year + '","' + ret.type + '","' + ret.tmdbid + '","' + ret.doubanid + '","' + ret.page + '","")');
+            }else{
+              $("#system_media_rss_btn").prop("data-bs-toggle", "dropdown");
+              $("#system_media_rss_btn").addClass("dropdown-toggle");
+              $("#system_media_rss_btn").attr("href", 'javascript:$("#system_media_rss_btn").dropdown("toggle")');
+              $("#system_media_rss_dropdown").empty();
+              for(var i=0; i<ret.seasons.length; i++){
+                $("#system_media_rss_dropdown").append('<a class="dropdown-item" href=\'javascript:add_rss_media("' + ret.title + '","' + ret.year + '","' + ret.type + '","' + ret.tmdbid + '","' + ret.doubanid + '","' + ret.page + '","' + ret.seasons[i].num + '")\'>' + ret.seasons[i].text + '</a>');
+              }
+            }
+
+            //订阅季的下拉框
             //搜索按钮
             $("#system_media_search_btn").text("搜索");
             $("#system_media_search_btn").attr("href", 'javascript:search_mediainfo_media("' + ret.tmdbid + '", "' + ret.doubanid + '", "' + ret.title + '", "' + ret.type_str + '")');
@@ -1099,14 +1148,22 @@
     }
 
     //新增订阅
-    function add_rss_media (name, year, type, tmdbid, doubanid, page) {
+    function add_rss_media (name, year, type, tmdbid, doubanid, page, season, func) {
       hide_mediainfo_modal();
-      var data = { "name": name, "type": type, "year": year, "doubanid": doubanid, "tmdbid": tmdbid, "page": page };
+      var data = { "name": name,
+                   "type": type,
+                   "year": year,
+                   "doubanid": doubanid,
+                   "tmdbid": tmdbid,
+                   "page": page,
+                   "season": season};
       show_wait_process();
       ajax_post("add_rss_media", data, function (ret) {
         hide_wait_process();
         if (ret.code == 0) {
-          if (ret.page) {
+          if(func){
+            func();
+          }else if (ret.page) {
             navmenu(ret.page);
           } else {
             show_success_modal(ret.name + " 添加RSS订阅成功！");
@@ -1118,12 +1175,13 @@
     }
 
     // 取消订阅
-    function remove_rss_media (name, year, type, rssid, page) {
+    function remove_rss_media (name, year, type, rssid, page, tmdbid, func) {
       hide_mediainfo_modal();
-      var cmd = "remove_rss_media";
-      var data = { "name": name, "type": type, "year": year, "rssid": rssid, "page": page };
-      ajax_post(cmd, data, function (ret) {
-        if (ret.page) {
+      var data = { "name": name, "type": type, "year": year, "rssid": rssid, "page": page, "tmdbid": tmdbid};
+      ajax_post("remove_rss_media", data, function (ret) {
+        if(func){
+          func();
+        }else if (ret.page) {
           navmenu(ret.page);
         } else {
           show_success_modal(ret.name + " 已从RSS订阅中移除！");
@@ -1139,6 +1197,29 @@
           navmenu(ret.page);
         }
       });
+    }
+
+    //显示订阅季选择框
+    function show_rss_seasons_modal(name, year, type, tmdbid, doubanid, seasons, func){
+      $("#system_rss_seasons_group").empty();
+      for(var i=0; i<seasons.length; i++){
+        $("#system_rss_seasons_group").append('<label class="form-selectgroup-item"><input type="checkbox" name="system_rss_season" value="'+seasons[i].num+'" class="form-selectgroup-input"><span class="form-selectgroup-label">'+seasons[i].text+'</span></label>');
+      }
+      $("#system_rss_seasons_btn").unbind('click').click(function(){
+        $("#system-rss-seasons").modal('hide');
+        var i = 0;
+        var rss_seasons = [];
+        $("input[name='system_rss_season']").each(function(){
+          if($(this).prop("checked")){
+            rss_seasons[i] = $(this).val();
+            i = i + 1;
+          }
+        });
+        if(rss_seasons.length > 0){
+          add_rss_media(name, year, type, tmdbid, doubanid, '', rss_seasons, func);
+        }
+      });
+      $("#system-rss-seasons").modal('show');
     }
 
     //搜索

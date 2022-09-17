@@ -1,7 +1,6 @@
 import re
 
-from app.db.sql_helper import SqlHelper
-from app.media.meta.metabase import MetaBase
+from app.db import SqlHelper
 from app.utils.commons import singleton
 from app.utils.types import MediaType
 
@@ -77,7 +76,7 @@ class FilterRule:
             return ret_rules[0] if ret_rules else {}
         return ret_rules
 
-    def check_rules(self, meta_info: MetaBase, rolegroup=None):
+    def check_rules(self, meta_info, rolegroup=None):
         """
         检查种子是否匹配站点过滤规则：排除规则、包含规则，优先规则
         :param meta_info: 识别的信息
@@ -134,7 +133,7 @@ class FilterRule:
                     rule_match = False
             # 大小
             sizes = filter_info.get('size')
-            if sizes and rule_match and meta_info.size and meta_info.type == MediaType.MOVIE:
+            if sizes and rule_match and meta_info.size:
                 if sizes.find(',') != -1:
                     sizes = sizes.split(',')
                     if sizes[0].isdigit():
@@ -151,8 +150,12 @@ class FilterRule:
                         end_size = int(sizes.strip())
                     else:
                         end_size = 0
-                if not begin_size * 1024 ** 3 <= int(meta_info.size) <= end_size * 1024 ** 3:
-                    rule_match = False
+                if meta_info.type == MediaType.MOVIE:
+                    if not begin_size * 1024 ** 3 <= int(meta_info.size) <= end_size * 1024 ** 3:
+                        rule_match = False
+                else:
+                    if not begin_size * 1024 ** 3 <= int(meta_info.size)/int(meta_info.total_episodes or 1) <= end_size * 1024 ** 3:
+                        rule_match = False
 
             # 促销
             free = filter_info.get("free")

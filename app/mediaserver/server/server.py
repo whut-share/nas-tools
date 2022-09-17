@@ -1,7 +1,5 @@
 from abc import ABCMeta, abstractmethod
 
-from app.media.meta.metabase import MetaBase
-
 
 class IMediaServer(metaclass=ABCMeta):
 
@@ -45,7 +43,7 @@ class IMediaServer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_no_exists_episodes(self, meta_info: MetaBase, season, total_num):
+    def get_no_exists_episodes(self, meta_info, season, total_num):
         """
         根据标题、年份、季、总集数，查询缺少哪几集
         :param meta_info: 已识别的需要查询的媒体信息
@@ -77,5 +75,20 @@ class IMediaServer(metaclass=ABCMeta):
         """
         按类型、名称、年份来刷新媒体库
         :param items: 已识别的需要刷新媒体库的媒体信息列表
+        """
+        pass
+
+    @abstractmethod
+    def get_libraries(self):
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        pass
+
+    @abstractmethod
+    def get_items(self, parent):
+        """
+        获取媒体库中的所有媒体
+        :param parent: 上一级的ID
         """
         pass

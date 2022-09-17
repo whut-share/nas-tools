@@ -1,5 +1,6 @@
 import difflib
 import os
+import random
 import re
 import traceback
 from functools import lru_cache
@@ -8,18 +9,14 @@ import zhconv
 from lxml import etree
 
 import log
-from app.utils.path_utils import PathUtils
-from config import Config
-from app.media.constants import *
-from app.media.meta.metainfo import MetaInfo
+from app.media import MetaInfo
+from app.utils import PathUtils, EpisodeFormat, RequestUtils, NumberUtils, StringUtils, MetaHelper
+from config import Config, KEYWORD_BLACKLIST, KEYWORD_SEARCH_WEIGHT_3, KEYWORD_SEARCH_WEIGHT_2, KEYWORD_SEARCH_WEIGHT_1, \
+    KEYWORD_STR_SIMILARITY_THRESHOLD, KEYWORD_DIFF_SCORE_THRESHOLD, TMDB_IMAGE_ORIGINAL_URL, RMT_MEDIAEXT
 from app.media.tmdbv3api import TMDb, Search, Movie, TV, Person
 from app.media.tmdbv3api.exceptions import TMDbException
+from app.media.doubanv2api import DoubanApi
 from app.utils.cache_manager import cacheman
-from app.utils.commons import EpisodeFormat
-from app.utils.http_utils import RequestUtils
-from app.media.meta_helper import MetaHelper
-from app.utils.number_utils import NumberUtils
-from app.utils.string_utils import StringUtils
 from app.utils.types import MediaType, MatchMode
 
 
@@ -36,6 +33,7 @@ class Media:
 
     def __init__(self):
         self.init_config()
+        self.douban = DoubanApi()
 
     def init_config(self):
         config = Config()
@@ -945,31 +943,6 @@ class Media:
                 return int(season.get("episode_count"))
         return 0
 
-    @staticmethod
-    def get_tmdbinfo_directors_actors(tmdbinfo):
-        """
-        查询导演和演员
-        :param tmdbinfo: TMDB元数据
-        :return: 导演列表，演员列表
-        """
-        if not tmdbinfo:
-            return [], []
-        directors = []
-        actors = []
-        casts = tmdbinfo.get("cast") or []
-        for cast in casts:
-            if not cast:
-                continue
-            if cast.get("known_for_department") == "Acting":
-                actors.append(cast)
-        crews = tmdbinfo.get("crew") or []
-        for crew in crews:
-            if not crew:
-                continue
-            if crew.get("job") == "Director":
-                directors.append(crew)
-        return directors, actors
-
     def get_movie_discover(self, page=1):
         """
         发现电影
@@ -1133,9 +1106,9 @@ class Media:
             return tmdbinfo.get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE else tmdbinfo.get("name")
         return None
 
-    def get_person_chinese_name(self, person_id):
+    def get_tmdbperson_chinese_name(self, person_id):
         """
-        查询人物中文名称
+        查询TMDB人物中文名称
         """
         if not self.person:
             return ""
@@ -1156,3 +1129,108 @@ class Media:
                 if alter_name == zhconv.convert(alter_name, 'zh-hans'):
                     name = alter_name
         return name
+
+    def get_tmdbperson_aka_names(self, person_id):
+        """
+        查询人物又名
+        """
+        if not self.person:
+            return []
+        try:
+            aka_names = self.person.details(person_id).get("also_known_as", []) or []
+            return aka_names
+        except Exception as err:
+            log.console(err)
+            return []
+
+    def __search_douban_id(self, metainfo):
+        """
+        给定名称和年份，查询一条豆瓣信息返回对应ID
+        :param metainfo: 已进行识别过的媒体信息
+        """
+        if metainfo.year:
+            year_range = [int(metainfo.year), int(metainfo.year) + 1, int(metainfo.year) - 1]
+        else:
+            year_range = []
+        if metainfo.type == MediaType.MOVIE:
+            search_res = self.douban.movie_search(metainfo.title).get("items") or []
+            if not search_res:
+                return None
+            for res in search_res:
+                douban_meta = MetaInfo(title=res.get("target", {}).get("title"))
+                if metainfo.title == douban_meta.get_name() \
+                        and (int(res.get("target", {}).get("year")) in year_range or not year_range):
+                    return res.get("target_id")
+            return None
+        elif metainfo.type == MediaType.TV:
+            search_res = self.douban.tv_search(metainfo.title).get("items") or []
+            if not search_res:
+                return None
+            for res in search_res:
+                douban_meta = MetaInfo(title=res.get("target", {}).get("title"))
+                if metainfo.title == douban_meta.get_name() \
+                        and (str(res.get("target", {}).get("year")) == str(metainfo.year) or not metainfo.year):
+                    return res.get("target_id")
+                if metainfo.title == douban_meta.get_name() \
+                        and metainfo.get_season_string() == douban_meta.get_season_string():
+                    return res.get("target_id")
+            return search_res[0].get("target_id")
+
+    def get_douban_info(self, metainfo):
+        """
+        查询附带演职人员的豆瓣信息
+        :param metainfo: 已进行识别过的媒体信息
+        """
+        doubanid = self.__search_douban_id(metainfo)
+        if not doubanid:
+            return None
+        if metainfo.type == MediaType.MOVIE:
+            douban_info = self.douban.movie_detail(doubanid)
+            celebrities = self.douban.movie_celebrities(doubanid)
+            if douban_info and celebrities:
+                douban_info["directors"] = celebrities.get("directors")
+                douban_info["actors"] = celebrities.get("actors")
+            return douban_info
+        elif metainfo.type == MediaType.TV:
+            douban_info = self.douban.tv_detail(doubanid)
+            celebrities = self.douban.tv_celebrities(doubanid)
+            if douban_info and celebrities:
+                douban_info["directors"] = celebrities.get("directors")
+                douban_info["actors"] = celebrities.get("actors")
+            return douban_info
+
+    def get_random_discover_backdrop(self):
+        """
+        获取TMDB热门电影随机一张背景图
+        """
+        movies = self.get_movie_discover()
+        if movies:
+            backdrops = [movie.get("backdrop_path") for movie in movies.get("results")]
+            return TMDB_IMAGE_ORIGINAL_URL % backdrops[round(random.uniform(0, len(backdrops) - 1))]
+        return ""
+
+    def save_rename_cache(self, path, tmdb_info):
+        """
+        将手动识别的信息加入缓存
+        """
+        if not path or not tmdb_info:
+            return
+        meta_infos = {}
+        if os.path.isfile(path):
+            meta_info = MetaInfo(title=os.path.basename(path))
+            if meta_info.get_name():
+                media_key = "[%s]%s-%s-%s" % (
+                    tmdb_info.get("media_type").value, meta_info.get_name(), meta_info.year, meta_info.begin_season)
+                meta_infos[media_key] = tmdb_info
+        else:
+            path_files = PathUtils.get_dir_files(in_path=path, exts=RMT_MEDIAEXT)
+            for path_file in path_files:
+                meta_info = MetaInfo(title=os.path.basename(path_file))
+                if not meta_info.get_name():
+                    continue
+                media_key = "[%s]%s-%s-%s" % (
+                    tmdb_info.get("media_type").value, meta_info.get_name(), meta_info.year, meta_info.begin_season)
+                if media_key not in meta_infos.keys():
+                    meta_infos[media_key] = tmdb_info
+        if meta_infos:
+            self.meta.update_meta_data(meta_infos)

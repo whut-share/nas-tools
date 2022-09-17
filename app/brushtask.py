@@ -8,16 +8,13 @@ from time import sleep
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import log
-from app.db.sql_helper import SqlHelper
-from app.db.dict_helper import DictHelper
+from app.db import SqlHelper, DictHelper
 from config import BRUSH_REMOVE_TORRENTS_INTERVAL
-from app.downloader.client.qbittorrent import Qbittorrent
-from app.downloader.client.transmission import Transmission
-from app.message.message import Message
+from app.downloader import Qbittorrent, Transmission
+from app.message import Message
 from app.rss import Rss
-from app.utils.torrent import Torrent
+from app.utils import Torrent, StringUtils
 from app.utils.types import BrushDeleteType, SystemDictType
-from app.utils.string_utils import StringUtils
 from app.utils.commons import singleton
 
 
@@ -47,7 +44,8 @@ class BrushTask(object):
         brushtasks = SqlHelper.get_brushtasks()
         self._brush_tasks = []
         for task in brushtasks:
-            sendmessage_switch = DictHelper.get(SystemDictType.BrushMessageSwitch.value, task[0])
+            sendmessage_switch = DictHelper.get(SystemDictType.BrushMessageSwitch.value, task[2])
+            forceupload_switch = DictHelper.get(SystemDictType.BrushForceUpSwitch.value, task[2])
             self._brush_tasks.append({
                 "id": task[0],
                 "name": task[1],
@@ -62,7 +60,8 @@ class BrushTask(object):
                 "seed_size": task[11],
                 "rss_url": task[17],
                 "cookie": task[18],
-                "sendmessage": sendmessage_switch
+                "sendmessage": sendmessage_switch,
+                "forceupload": forceupload_switch
             })
         if not self._brush_tasks:
             return
@@ -84,7 +83,7 @@ class BrushTask(object):
             # 启动
             self._scheduler.print_jobs()
             self._scheduler.start()
-            log.info("【RUN】刷流服务启动...")
+            log.info("【RUN】刷流服务启动")
 
     def get_brushtask_info(self, taskid):
         for task in self._brush_tasks:
@@ -175,6 +174,7 @@ class BrushTask(object):
                                            taskid=taskid,
                                            transfer=True if taskinfo.get("transfer") == 'Y' else False,
                                            sendmessage=True if taskinfo.get("sendmessage") == 'Y' else False,
+                                           forceupload=True if taskinfo.get("forceupload") == 'Y' else False,
                                            taskname=task_name):
                     # 计数
                     success_count += 1
@@ -229,6 +229,7 @@ class BrushTask(object):
                     downloader = Qbittorrent(user_config=downloader_cfg)
                     # 检查完成状态的
                     torrents = downloader.get_torrents(ids=torrent_ids, status=["completed"])
+                    remove_torrent_ids = list(set(torrent_ids).difference(set(torrents)))
                     for torrent in torrents:
                         # ID
                         torrent_id = torrent.get("hash")
@@ -263,6 +264,7 @@ class BrushTask(object):
                                 update_torrents.append(("%s,%s" % (uploaded, downloaded), taskid, torrent_id))
                     # 检查下载中状态的
                     torrents = downloader.get_torrents(ids=torrent_ids, status=["downloading"])
+                    remove_torrent_ids = list(set(remove_torrent_ids).difference(set(torrents)))
                     for torrent in torrents:
                         # ID
                         torrent_id = torrent.get("hash")
@@ -294,6 +296,7 @@ class BrushTask(object):
                     # 检查完成状态
                     downloader = Transmission(user_config=downloader_cfg)
                     torrents = downloader.get_torrents(ids=torrent_ids, status=["seeding", "seed_pending"])
+                    remove_torrent_ids = list(set(torrent_ids).difference(set(torrents)))
                     for torrent in torrents:
                         # ID
                         torrent_id = torrent.id
@@ -329,6 +332,7 @@ class BrushTask(object):
                     # 检查下载状态
                     torrents = downloader.get_torrents(ids=torrent_ids,
                                                        status=["downloading", "download_pending", "stopped"])
+                    remove_torrent_ids = list(set(remove_torrent_ids).difference(set(torrents)))
                     for torrent in torrents:
                         # ID
                         torrent_id = torrent.id
@@ -362,15 +366,17 @@ class BrushTask(object):
                                                      remove_count=len(delete_ids))
                 # 更新种子状态为已删除
                 SqlHelper.update_brushtask_torrent_state(update_torrents)
-                # 删除种子
+                # 删除下载器种子
                 if delete_ids:
                     downloader.delete_torrents(delete_file=True, ids=delete_ids)
                     log.info("【BRUSH】任务 %s 共删除 %s 个刷流下载任务" % (task_name, len(delete_ids)))
                 else:
-                    log.info("【BRUSH】任务 %s 本次检查未删除任务" % task_name)
-                    if sendmessage:
-                        msg_title = "【刷流任务 {} 本次检查未删除任务】".format(task_name)
-                        self.message.sendmsg(title=msg_title)
+                    log.info("【BRUSH】任务 %s 本次检查未删除下载任务" % task_name)
+                # 手工删除的种子，清除对应记录
+                if remove_torrent_ids:
+                    log.info("【BRUSH】任务 %s 的这些下载任务在下载器中不存在，将删除任务记录：%s" % (task_name, remove_torrent_ids))
+                    for remove_torrent_id in remove_torrent_ids:
+                        SqlHelper.delete_brushtask_torrent(taskid, remove_torrent_id)
             except Exception as e:
                 log.console(str(e) + " - " + traceback.format_exc())
 
@@ -439,7 +445,7 @@ class BrushTask(object):
                 return int(len(dlitems))
         return None
 
-    def __download_torrent(self, downloadercfg, title, enclosure, size, taskid, transfer, sendmessage, taskname):
+    def __download_torrent(self, downloadercfg, title, enclosure, size, taskid, transfer, sendmessage, forceupload, taskname):
         """
         添加下载任务，更新任务数据
         :param downloadercfg: 下载器的所有参数
@@ -448,6 +454,8 @@ class BrushTask(object):
         :param size: 种子大小
         :param taskid: 任务ID
         :param transfer: 是否要转移，为False时直接添加已整理的标签
+        :param sendmessage: 是否需要消息推送
+        :param forceupload: 是否需要将添加的刷流任务设置为强制做种(仅针对qBittorrent)
         :param taskname: 任务名称
         """
         if not downloadercfg:
@@ -463,7 +471,7 @@ class BrushTask(object):
             if not downloader.qbc:
                 log.error("【BRUSH】任务 %s 下载器 %s 无法连接" % (taskname, downloadercfg.get("name")))
                 return False
-            torrent_tag = str(round(datetime.now().timestamp()))
+            torrent_tag = "NT" + StringUtils.generate_random_str(5)
             if tag:
                 tag = [tag, torrent_tag]
             else:
@@ -479,7 +487,8 @@ class BrushTask(object):
                     else:
                         downloader.remove_torrents_tag(download_id, torrent_tag)
                         downloader.start_torrents(download_id)
-                        downloader.torrents_set_force_start(download_id)
+                        if forceupload:
+                            downloader.torrents_set_force_start(download_id)
                         break
         else:
             # 初始化下载器

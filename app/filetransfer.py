@@ -10,23 +10,15 @@ from threading import Lock
 from time import sleep
 
 import log
-from app.db.sql_helper import SqlHelper
+from app.db import SqlHelper
 from config import RMT_SUBEXT, RMT_MEDIAEXT, RMT_FAVTYPE, Config, RMT_MIN_FILESIZE, DEFAULT_MOVIE_FORMAT, \
     DEFAULT_TV_FORMAT
-from app.message.message import Message
-from app.mediaserver.media_server import MediaServer
+from app.message import Message
+from app.mediaserver import MediaServer
 from app.subtitle import Subtitle
-from app.media.category import Category
-from app.media.media import Media
-from app.media.meta.metabase import MetaBase
-from app.media.meta.metainfo import MetaInfo
-from app.utils.commons import EpisodeFormat, RMT_MODES
-from app.media.nfo_helper import NfoHelper
-from app.utils.path_utils import PathUtils
-from app.utils.string_utils import StringUtils
-from app.utils.system_utils import SystemUtils
-from app.utils.thread_helper import ThreadHelper
-from app.utils.types import MediaType, SyncType, RmtMode, OsType
+from app.media import Media, MetaInfo, Category, Scraper
+from app.utils import EpisodeFormat, PathUtils, StringUtils, SystemUtils, ThreadHelper
+from app.utils.types import MediaType, SyncType, RmtMode, OsType, RMT_MODES
 
 lock = Lock()
 
@@ -36,7 +28,7 @@ class FileTransfer:
     message = None
     category = None
     mediaserver = None
-    nfohelper = None
+    scraper = None
     threadhelper = None
 
     __system = OsType.LINUX
@@ -55,7 +47,9 @@ class FileTransfer:
     __tv_dir_rmt_format = ""
     __tv_season_rmt_format = ""
     __tv_file_rmt_format = ""
-    __nfo_poster = False
+    __scraper_flag = False
+    __scraper_nfo = {}
+    __scraper_pic = {}
     __refresh_mediaserver = False
 
     def __init__(self):
@@ -63,7 +57,7 @@ class FileTransfer:
         self.message = Message()
         self.category = Category()
         self.mediaserver = MediaServer()
-        self.nfohelper = NfoHelper()
+        self.scraper = Scraper()
         self.threadhelper = ThreadHelper()
         self.init_config()
 
@@ -71,9 +65,10 @@ class FileTransfer:
         self.__system = SystemUtils.get_system()
         config = Config()
         media = config.get_config('media')
+        self.__scraper_flag = media.get("nfo_poster")
+        self.__scraper_nfo = config.get_config('scraper_nfo')
+        self.__scraper_pic = config.get_config('scraper_pic')
         if media:
-            # NFO开关
-            self.__nfo_poster = media.get("nfo_poster")
             # 刷新媒体库开关
             self.__refresh_mediaserver = media.get("refresh_mediaserver")
             # 电影目录
@@ -695,8 +690,15 @@ class FileTransfer:
                         message_medias[message_key].total_episodes += media.total_episodes
                         message_medias[message_key].size += media.size
                 # 生成nfo及poster
-                if self.__nfo_poster:
-                    self.nfohelper.gen_nfo_files(media, ret_dir_path, os.path.basename(ret_file_path))
+                if self.__scraper_flag:
+                    # 查询TMDB详情
+                    media.set_tmdb_info(self.media.get_tmdb_info(mtype=media.type, tmdbid=media.tmdb_id))
+                    # 生成刮削文件
+                    self.scraper.gen_scraper_files(media=media,
+                                                   scraper_nfo=self.__scraper_nfo,
+                                                   scraper_pic=self.__scraper_pic,
+                                                   dir_path=ret_dir_path,
+                                                   file_name=os.path.basename(ret_file_path))
                 # 移动模式随机休眠（兼容一些网盘挂载目录）
                 if rmt_mode == RmtMode.MOVE:
                     sleep(round(random.uniform(0, 1), 1))
@@ -716,14 +718,15 @@ class FileTransfer:
         # 总结
         log.info("【RMT】%s 处理完成，总数：%s，失败：%s" % (in_path, total_count, failed_count))
         if alert_count > 0:
-            self.message.sendmsg(title="%s 有 %s 个文件转移失败，请登录NASTool查看" % (in_path, alert_count))
-        else:
+            self.message.send_transfer_fail_message(in_path, alert_count)
+        elif failed_count == 0:
             # 删除空目录
             if rmt_mode == RmtMode.MOVE \
                     and os.path.exists(in_path) \
                     and os.path.isdir(in_path) \
-                    and not PathUtils.get_dir_files(in_path=in_path, exts=RMT_MEDIAEXT):
-                log.info("【RMT】目录下已无媒体文件，移动模式下删除目录：%s" % in_path)
+                    and not PathUtils.get_dir_files(in_path=in_path, exts=RMT_MEDIAEXT) \
+                    and not PathUtils.get_dir_files(in_path=in_path, exts=['.!qB', '.part']):
+                log.info("【RMT】目录下已无媒体文件及正在下载的文件，移动模式下删除目录：%s" % in_path)
                 shutil.rmtree(in_path)
         return success_flag, error_message
 
@@ -874,7 +877,7 @@ class FileTransfer:
             log.info("【RMT】%s 目录不存在" % org_path)
         return False
 
-    def get_dest_path_by_info(self, dest, meta_info: MetaBase):
+    def get_dest_path_by_info(self, dest, meta_info):
         """
         拼装转移重命名后的新文件地址
         :param dest: 目的目录
@@ -1030,7 +1033,7 @@ class FileTransfer:
                                        rmt_mode=sync_transfer_mode)
 
     @staticmethod
-    def get_format_dict(media: MetaBase):
+    def get_format_dict(media):
         """
         根据媒体信息，返回Format字典
         """
@@ -1054,7 +1057,7 @@ class FileTransfer:
             "part": media.part
         }
 
-    def get_moive_dest_path(self, media_info: MetaBase):
+    def get_moive_dest_path(self, media_info):
         """
         计算电影文件路径
         :return: 电影目录、电影名称
@@ -1064,7 +1067,7 @@ class FileTransfer:
         file_name = re.sub(r"[-_\s.]*None", "", self.__movie_file_rmt_format.format(**format_dict))
         return dir_name, file_name
 
-    def get_tv_dest_path(self, media_info: MetaBase):
+    def get_tv_dest_path(self, media_info):
         """
         计算电视剧文件路径
         :return: 电视剧目录、季目录、集名称

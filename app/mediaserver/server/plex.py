@@ -1,9 +1,9 @@
+from app.utils.types import MediaType
 from plexapi.myplex import MyPlexAccount
 
 import log
 from config import Config
 from app.mediaserver.server.server import IMediaServer
-from app.media.meta.metabase import MetaBase
 from app.utils.commons import singleton
 
 
@@ -14,6 +14,7 @@ class Plex(IMediaServer):
     __password = None
     __servername = None
     __plex = None
+    __libraries = []
 
     def __init__(self):
         self.init_config()
@@ -104,7 +105,7 @@ class Plex(IMediaServer):
         return ret_movies
 
     # 根据标题、年份、季、总集数，查询Plex中缺少哪几集
-    def get_no_exists_episodes(self, meta_info: MetaBase, season, total_num):
+    def get_no_exists_episodes(self, meta_info, season, total_num):
         """
         根据标题、年份、季、总集数，查询Plex中缺少哪几集
         :param meta_info: 已识别的需要查询的媒体信息
@@ -145,3 +146,49 @@ class Plex(IMediaServer):
         if not self.__plex:
             return False
         return self.__plex.library.update()
+
+    def get_libraries(self):
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        if not self.__plex:
+            return []
+        try:
+            self.__libraries = self.__plex.library.sections()
+        except Exception as err:
+            print(err)
+            return []
+        libraries = []
+        for library in self.__libraries:
+            libraries.append({"id": library.key, "name": library.title})
+        return libraries
+
+    def get_items(self, parent):
+        """
+        获取媒体服务器所有媒体库列表
+        """
+        if not parent:
+            yield {}
+        if not self.__plex:
+            yield {}
+        try:
+            section = self.__plex.library.sectionByID(parent)
+            if section:
+                for item in section.all():
+                    if not item:
+                        continue
+                    if item.type == "movie":
+                        media_type = MediaType.MOVIE
+                    elif item.type == "show":
+                        media_type = MediaType.TV
+                    else:
+                        continue
+                    yield {"id": item.key,
+                           "library": item.librarySectionID,
+                           "type": media_type.value,
+                           "title": item.title,
+                           "year": item.year,
+                           "json": str(item.__dict__)}
+        except Exception as err:
+            print(err)
+        yield {}

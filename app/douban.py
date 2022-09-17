@@ -7,14 +7,14 @@ from lxml import etree
 from requests.utils import dict_from_cookiejar
 
 import log
-from app.db.sql_helper import SqlHelper
+from app.db import SqlHelper
+from app.message import Message
 from config import Config
 from app.downloader.downloader import Downloader
 from app.searcher import Searcher
-from app.media.doubanv2api.doubanapi import DoubanApi
-from app.media.media import Media
-from app.media.meta.metainfo import MetaInfo
-from app.utils.http_utils import RequestUtils
+from app.media.doubanv2api import DoubanApi
+from app.media import Media, MetaInfo
+from app.utils import RequestUtils
 from app.utils.types import MediaType, SearchType
 from web.backend.subscribe import add_rss_subscribe
 
@@ -27,6 +27,7 @@ class DouBan:
     media = None
     downloader = None
     doubanapi = None
+    message = None
     __users = []
     __days = 0
     __interval = None
@@ -39,6 +40,7 @@ class DouBan:
         self.downloader = Downloader()
         self.media = Media()
         self.doubanapi = DoubanApi()
+        self.message = Message()
         self.init_config()
 
     def init_config(self):
@@ -277,6 +279,8 @@ class DouBan:
                             if code != 0:
                                 log.error("【DOUBAN】%s 添加订阅失败：%s" % (media.get_name(), msg))
                             else:
+                                # 发送订阅消息
+                                self.message.send_rss_success_message(in_from=SearchType.DB, media_info=media)
                                 # 插入为已RSS状态
                                 SqlHelper.insert_douban_media_state(media, "RSS")
                     else:
@@ -296,6 +300,8 @@ class DouBan:
                         if code != 0:
                             log.error("【DOUBAN】%s 添加订阅失败：%s" % (media.get_name(), msg))
                         else:
+                            # 发送订阅消息
+                            self.message.send_rss_success_message(in_from=SearchType.DB, media_info=media)
                             # 插入为已RSS状态
                             SqlHelper.insert_douban_media_state(media, "RSS")
             log.info("【DOUBAN】豆瓣数据同步完成")

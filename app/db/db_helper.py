@@ -5,7 +5,7 @@ import log
 from config import Config
 from app.utils.commons import singleton
 from app.db.db_pool import DBPool
-from app.utils.path_utils import PathUtils
+from app.utils import PathUtils
 
 lock = threading.Lock()
 
@@ -291,8 +291,6 @@ class DBHelper:
                                    UPLOAD_SIZE     TEXT,
                                    STATE     TEXT,
                                    LST_MOD_DATE     TEXT);''')
-
-
             cursor.execute('''CREATE INDEX IF NOT EXISTS INDX_SITE_BRUSH_TASK_NAME ON SITE_BRUSH_TASK (NAME);''')
             # 刷流任务明细表
             cursor.execute('''CREATE TABLE IF NOT EXISTS SITE_BRUSH_TORRENTS
@@ -325,6 +323,32 @@ class DBHelper:
                                    VALUE    TEXT,
                                    NOTE     TEXT);''')
             cursor.execute('''CREATE INDEX IF NOT EXISTS INDX_SYSTEM_DICT ON SYSTEM_DICT (TYPE, KEY);''')
+            # 自定义订阅表
+            cursor.execute('''CREATE TABLE IF NOT EXISTS CONFIG_USER_RSS
+                                   (ID INTEGER PRIMARY KEY AUTOINCREMENT     NOT NULL,
+                                   NAME    TEXT,
+                                   ADDRESS    TEXT,
+                                   PARSER    TEXT,
+                                   INTERVAL     TEXT,
+                                   USES     TEXT,
+                                   INCLUDE     TEXT,
+                                   EXCLUDE     TEXT,
+                                   FILTER     TEXT,
+                                   UPDATE_TIME     TEXT,
+                                   PROCESS_COUNT     TEXT,
+                                   STATE    TEXT,
+                                   NOTE     TEXT);''')
+            cursor.execute('''CREATE INDEX IF NOT EXISTS INDX_CONFIG_USER_RSS ON CONFIG_USER_RSS (NAME);''')
+            # 自定义订阅解析模板表
+            cursor.execute('''CREATE TABLE IF NOT EXISTS CONFIG_RSS_PARSER
+                                   (ID INTEGER PRIMARY KEY AUTOINCREMENT     NOT NULL,
+                                   NAME    TEXT,
+                                   TYPE    TEXT,
+                                   FORMAT    TEXT,
+                                   PARAMS     TEXT,
+                                   NOTE     TEXT,
+                                   SYSDEF     TEXT);''')
+            cursor.execute('''CREATE INDEX IF NOT EXISTS INDX_CONFIG_RSS_PARSER ON CONFIG_RSS_PARSER (NAME);''')
             # 提交
             conn.commit()
 

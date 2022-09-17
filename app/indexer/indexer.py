@@ -5,15 +5,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import log
 from app.filterrules import FilterRule
-from app.utils.torrent import Torrent
-from app.media.media import Media
-from app.media.meta.metabase import MetaBase
-from app.media.meta.metainfo import MetaInfo
-from app.utils.commons import ProcessHandler
-from app.utils.dom_utils import DomUtils
-from app.utils.http_utils import RequestUtils
-from app.utils.string_utils import StringUtils
-from app.utils.types import MediaType
+from app.utils import Torrent, DomUtils, RequestUtils, StringUtils, ProgressController
+from app.media import MetaInfo, Media
+from app.utils.types import MediaType, SearchType
 
 
 class IIndexer(metaclass=ABCMeta):
@@ -22,12 +16,14 @@ class IIndexer(metaclass=ABCMeta):
     api_key = None
     host = None
     filterrule = None
+    progress = None
     __reverse_title_sites = ['keepfriends']
     __invalid_description_sites = ['tjupt']
 
     def __init__(self):
         self.media = Media()
         self.filterrule = FilterRule()
+        self.progress = ProgressController()
         self.init_config()
 
     @abstractmethod
@@ -51,7 +47,12 @@ class IIndexer(metaclass=ABCMeta):
         """
         pass
 
-    def search_by_keyword(self, key_word, filter_args: dict, match_type=0, match_media: MetaBase = None):
+    def search_by_keyword(self,
+                          key_word,
+                          filter_args: dict,
+                          match_type=0,
+                          match_media=None,
+                          in_from: SearchType = None):
         """
         根据关键字调用 Index API 检索
         :param key_word: 检索的关键字，不能为空
@@ -60,6 +61,7 @@ class IIndexer(metaclass=ABCMeta):
                             sp_state: 为UL DL，* 代表不关心，
         :param match_type: 匹配模式：0-识别并模糊匹配；1-识别并精确匹配；2-不识别匹配
         :param match_media: 需要匹配的媒体信息
+        :param in_from: 搜索渠道
         :return: 命中的资源媒体信息列表
         """
         if not key_word:
@@ -73,10 +75,10 @@ class IIndexer(metaclass=ABCMeta):
         start_time = datetime.datetime.now()
         if filter_args and filter_args.get("site"):
             log.info(f"【{self.index_type}】开始检索 %s，站点：%s ..." % (key_word, filter_args.get("site")))
-            ProcessHandler().update(text="开始检索 %s，站点：%s ..." % (key_word, filter_args.get("site")))
+            self.progress.update(ptype='search', text="开始检索 %s，站点：%s ..." % (key_word, filter_args.get("site")))
         else:
             log.info(f"【{self.index_type}】开始并行检索 %s，线程数：%s ..." % (key_word, len(indexers)))
-            ProcessHandler().update(text="开始并行检索 %s，线程数：%s ..." % (key_word, len(indexers)))
+            self.progress.update(ptype='search', text="开始并行检索 %s，线程数：%s ..." % (key_word, len(indexers)))
         # 多线程
         executor = ThreadPoolExecutor(max_workers=len(indexers))
         all_task = []
@@ -89,23 +91,24 @@ class IIndexer(metaclass=ABCMeta):
                                    key_word,
                                    filter_args,
                                    match_type,
-                                   match_media)
+                                   match_media,
+                                   in_from)
             all_task.append(task)
         ret_array = []
         finish_count = 0
         for future in as_completed(all_task):
             result = future.result()
             finish_count += 1
-            ProcessHandler().update(value=round(100 * (finish_count / len(all_task))))
+            self.progress.update(ptype='search', value=round(100 * (finish_count / len(all_task))))
             if result:
                 ret_array = ret_array + result
         # 计算耗时
         end_time = datetime.datetime.now()
         log.info(f"【{self.index_type}】所有站点检索完成，有效资源数：%s，总耗时 %s 秒"
                  % (len(ret_array), (end_time - start_time).seconds))
-        ProcessHandler().update(text="所有站点检索完成，有效资源数：%s，总耗时 %s 秒"
-                                     % (len(ret_array), (end_time - start_time).seconds),
-                                value=100)
+        self.progress.update(ptype='search', text="所有站点检索完成，有效资源数：%s，总耗时 %s 秒"
+                                                  % (len(ret_array), (end_time - start_time).seconds),
+                             value=100)
         return ret_array
 
     @abstractmethod
@@ -114,7 +117,8 @@ class IIndexer(metaclass=ABCMeta):
                key_word,
                filter_args: dict,
                match_type,
-               match_media: MetaBase):
+               match_media,
+               in_from: SearchType):
         """
         根据关键字多线程检索
         """
@@ -122,7 +126,7 @@ class IIndexer(metaclass=ABCMeta):
             return None
         if filter_args is None:
             filter_args = {}
-
+        # 不在设定搜索范围的站点过滤掉
         if filter_args.get("site") and indexer.name not in filter_args.get("site"):
             return []
         # 计算耗时
@@ -134,13 +138,13 @@ class IIndexer(metaclass=ABCMeta):
         result_array = self.__parse_torznabxml(api_url)
         if len(result_array) == 0:
             log.warn(f"【{self.index_type}】{indexer.name} 未检索到数据")
-            ProcessHandler().update(text=f"{indexer.name} 未检索到数据")
+            self.progress.update(ptype='search', text=f"{indexer.name} 未检索到数据")
             return []
         else:
             log.warn(f"【{self.index_type}】{indexer.name} 返回数据：{len(result_array)}")
             return self.filter_search_results(result_array=result_array,
                                               order_seq=order_seq,
-                                              indexer_name=indexer.name,
+                                              indexer=indexer,
                                               filter_args=filter_args,
                                               match_type=match_type,
                                               match_media=match_media,
@@ -246,10 +250,10 @@ class IIndexer(metaclass=ABCMeta):
 
     def filter_search_results(self, result_array: list,
                               order_seq,
-                              indexer_name,
+                              indexer,
                               filter_args: dict,
                               match_type,
-                              match_media: MetaBase,
+                              match_media,
                               start_time):
         """
         从检索结果中匹配符合资源条件的记录
@@ -260,25 +264,27 @@ class IIndexer(metaclass=ABCMeta):
         index_match_fail = 0
         for item in result_array:
             # 这此站标题和副标题相反
-            if indexer_name in self.__reverse_title_sites:
+            if indexer.id in self.__reverse_title_sites:
                 torrent_name = item.get('description')
                 description = item.get('title')
             else:
                 torrent_name = item.get('title')
                 description = item.get('description')
             # 这些站副标题无意义，需要去除
-            if indexer_name in self.__invalid_description_sites:
+            if indexer.id in self.__invalid_description_sites:
                 description = ""
             enclosure = item.get('enclosure')
             size = item.get('size')
             seeders = item.get('seeders')
             peers = item.get('peers')
             page_url = item.get('page_url')
-            uploadvolumefactor = round(float(item.get('uploadvolumefactor')), 1) if item.get('uploadvolumefactor') is not None else 1.0
-            downloadvolumefactor = round(float(item.get('downloadvolumefactor')), 1) if item.get('downloadvolumefactor') is not None else 1.0
+            uploadvolumefactor = round(float(item.get('uploadvolumefactor')), 1) if item.get(
+                'uploadvolumefactor') is not None else 1.0
+            downloadvolumefactor = round(float(item.get('downloadvolumefactor')), 1) if item.get(
+                'downloadvolumefactor') is not None else 1.0
 
-            # 合匹配模式下，过滤掉做种数为0的
-            if filter_args.get("seeders") and str(seeders) == "0":
+            # 全匹配模式下，非公开站点，过滤掉做种数为0的
+            if filter_args.get("seeders") and not indexer.public and str(seeders) == "0":
                 log.info(f"【{self.index_type}】{torrent_name} 做种数为0")
                 continue
 
@@ -304,7 +310,7 @@ class IIndexer(metaclass=ABCMeta):
                                                                        rolegroup=filter_args.get("rule"))
                 if not match_flag:
                     log.info(
-                        f"【{self.index_type}】{torrent_name} 大小：{StringUtils.str_filesize(meta_info.size)} 促销：{meta_info.get_volume_factor_string()} 不符合订阅过滤规则")
+                        f"【{self.index_type}】{torrent_name} 大小：{StringUtils.str_filesize(meta_info.size)} 促销：{meta_info.get_volume_factor_string()} 不符合订阅/站点过滤规则")
                     index_rule_fail += 1
                     continue
             # 使用默认规则
@@ -373,8 +379,9 @@ class IIndexer(metaclass=ABCMeta):
                 continue
 
             # 匹配到了
-            log.info(f"【{self.index_type}】{torrent_name} {description} 匹配成功")
-            media_info.set_torrent_info(site=indexer_name,
+            log.info(
+                f"【{self.index_type}】{torrent_name} {description} 识别为 {media_info.get_title_string()} {media_info.get_season_episode_string()} 匹配成功")
+            media_info.set_torrent_info(site=indexer.name,
                                         site_order=order_seq,
                                         enclosure=enclosure,
                                         res_order=res_order,
@@ -392,7 +399,7 @@ class IIndexer(metaclass=ABCMeta):
         # 计算耗时
         end_time = datetime.datetime.now()
         log.info(
-            f"【{self.index_type}】{indexer_name} 共检索到 {len(result_array)} 条数据，过滤 {index_rule_fail}，不匹配 {index_match_fail}，有效资源 {index_sucess}，耗时 {(end_time - start_time).seconds} 秒")
-        ProcessHandler().update(
-            text=f"{indexer_name} 共检索到 {len(result_array)} 条数据，过滤 {index_rule_fail}，不匹配 {index_match_fail}，有效资源 {index_sucess}，耗时 {(end_time - start_time).seconds} 秒")
+            f"【{self.index_type}】{indexer.name} 共检索到 {len(result_array)} 条数据，过滤 {index_rule_fail}，不匹配 {index_match_fail}，有效资源 {index_sucess}，耗时 {(end_time - start_time).seconds} 秒")
+        self.progress.update(ptype='search',
+                             text=f"{indexer.name} 共检索到 {len(result_array)} 条数据，过滤 {index_rule_fail}，不匹配 {index_match_fail}，有效资源 {index_sucess}，耗时 {(end_time - start_time).seconds} 秒")
         return ret_array

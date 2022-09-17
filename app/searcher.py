@@ -1,14 +1,11 @@
 import log
-from app.db.sql_helper import SqlHelper
+from app.db import SqlHelper
 from config import Config
-from app.message.message import Message
-from app.downloader.downloader import Downloader
-from app.indexer.client.builtin import BuiltinIndexer
-from app.indexer.client.jackett import Jackett
-from app.indexer.client.prowlarr import Prowlarr
-from app.media.media import Media
-from app.media.meta.metabase import MetaBase
-from app.utils.commons import ProcessHandler
+from app.message import Message
+from app.downloader import Downloader
+from app.indexer import BuiltinIndexer, Jackett, Prowlarr
+from app.media import Media
+from app.utils import ProgressController
 from app.utils.types import SearchType, MediaType
 
 
@@ -17,12 +14,14 @@ class Searcher:
     media = None
     message = None
     indexer = None
+    progress = None
     __search_auto = True
 
     def __init__(self):
         self.downloader = Downloader()
         self.media = Media()
         self.message = Message()
+        self.progress = ProgressController()
         self.init_config()
 
     def init_config(self):
@@ -35,13 +34,19 @@ class Searcher:
         else:
             self.indexer = BuiltinIndexer()
 
-    def search_medias(self, key_word, filter_args: dict, match_type, match_media: MetaBase = None):
+    def search_medias(self,
+                      key_word,
+                      filter_args: dict,
+                      match_type,
+                      match_media=None,
+                      in_from: SearchType = None):
         """
         根据关键字调用索引器检查媒体
         :param key_word: 检索的关键字，不能为空
         :param filter_args: 过滤条件
         :param match_type: 匹配模式：0-识别并模糊匹配；1-识别并精确匹配；2-不识别匹配
         :param match_media: 区配的媒体信息
+        :param in_from: 搜索渠道
         :return: 命中的资源媒体信息列表
         """
         if not key_word:
@@ -51,9 +56,10 @@ class Searcher:
         return self.indexer.search_by_keyword(key_word=key_word,
                                               filter_args=filter_args,
                                               match_type=match_type,
-                                              match_media=match_media)
+                                              match_media=match_media,
+                                              in_from=in_from)
 
-    def search_one_media(self, media_info: MetaBase,
+    def search_one_media(self, media_info,
                          in_from: SearchType,
                          no_exists: dict,
                          sites: list = None,
@@ -73,7 +79,7 @@ class Searcher:
         if not media_info:
             return False, {}, 0, 0
         # 进度计数重置
-        ProcessHandler().reset()
+        self.progress.reset('search')
         # 查找的季
         if media_info.begin_season is None:
             search_season = None
@@ -108,14 +114,16 @@ class Searcher:
         media_list = self.search_medias(key_word=search_title,
                                         filter_args=filter_args,
                                         match_type=1,
-                                        match_media=media_info)
+                                        match_media=media_info,
+                                        in_from=in_from)
         # 使用名称重新搜索
         if len(media_list) == 0 and media_info.get_name() and search_title != media_info.get_name():
             log.info("【SEARCHER】%s 未检索到资源,尝试通过 %s 重新检索 ..." % (search_title, media_info.get_name()))
             media_list = self.search_medias(key_word=media_info.get_name(),
                                             filter_args=filter_args,
                                             match_type=1,
-                                            match_media=media_info)
+                                            match_media=media_info,
+                                            in_from=in_from)
 
         if len(media_list) == 0:
             log.info("【SEARCHER】%s 未搜索到任何资源" % search_title)

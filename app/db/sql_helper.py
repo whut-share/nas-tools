@@ -3,9 +3,8 @@ import os.path
 import time
 from enum import Enum
 
-from app.media.meta.metabase import MetaBase
 from app.db.db_helper import DBHelper
-from app.utils.string_utils import StringUtils
+from app.utils import StringUtils
 from app.utils.types import MediaType, RmtMode
 
 
@@ -98,7 +97,7 @@ class SqlHelper:
         查询检索结果的所有记录
         """
         sql = "SELECT ID,TITLE||' ('||YEAR||') '||ES_STRING,RES_TYPE,SIZE,SEEDERS," \
-              "ENCLOSURE,SITE,YEAR,ES_STRING,IMAGE,TYPE,VOTE*1,TORRENT_NAME,DESCRIPTION,TMDBID,POSTER,OVERVIEW,PAGEURL,OTHERINFO,UPLOAD_VOLUME_FACTOR,DOWNLOAD_VOLUME_FACTOR" \
+              "ENCLOSURE,SITE,YEAR,ES_STRING,IMAGE,TYPE,VOTE*1,TORRENT_NAME,DESCRIPTION,TMDBID,POSTER,OVERVIEW,PAGEURL,OTHERINFO,UPLOAD_VOLUME_FACTOR,DOWNLOAD_VOLUME_FACTOR,TITLE" \
               " FROM SEARCH_RESULT_INFO"
         return DBHelper().select_by_sql(sql)
 
@@ -117,6 +116,24 @@ class SqlHelper:
             return False
 
     @staticmethod
+    def is_userrss_finished(torrent_name, enclosure):
+        """
+        查询RSS是否处理过，根据名称
+        """
+        if not torrent_name and not enclosure:
+            return True
+        if enclosure:
+            sql = "SELECT COUNT(1) FROM RSS_TORRENTS WHERE ENCLOSURE = ?"
+            rets = DBHelper().select_by_sql(sql, (enclosure,))
+        else:
+            sql = "SELECT COUNT(1) FROM RSS_TORRENTS WHERE TORRENT_NAME = ?"
+            rets = DBHelper().select_by_sql(sql, (torrent_name,))
+        if rets and rets[0][0] > 0:
+            return True
+        else:
+            return False
+
+    @staticmethod
     def delete_all_search_torrents():
         """
         删除所有搜索的记录
@@ -124,7 +141,7 @@ class SqlHelper:
         return DBHelper().update_by_sql("DELETE FROM SEARCH_RESULT_INFO")
 
     @staticmethod
-    def insert_rss_torrents(media_info: MetaBase):
+    def insert_rss_torrents(media_info):
         """
         将RSS的记录插入数据库
         """
@@ -139,7 +156,7 @@ class SqlHelper:
                                               media_info.get_episode_string()))
 
     @staticmethod
-    def insert_douban_media_state(media: MetaBase, state):
+    def insert_douban_media_state(media, state):
         """
         将豆瓣的数据插入数据库
         """
@@ -160,7 +177,7 @@ class SqlHelper:
                                               state))
 
     @staticmethod
-    def update_douban_media_state(media: MetaBase, state):
+    def update_douban_media_state(media, state):
         """
         标记豆瓣数据的状态
         """
@@ -192,7 +209,7 @@ class SqlHelper:
             return False
 
     @staticmethod
-    def insert_transfer_history(in_from: Enum, rmt_mode: RmtMode, in_path, dest, media_info: MetaBase):
+    def insert_transfer_history(in_from: Enum, rmt_mode: RmtMode, in_path, dest, media_info):
         """
         插入识别转移记录
         """
@@ -400,20 +417,21 @@ class SqlHelper:
             "SELECT ID,NAME,PRI,RSSURL,SIGNURL,COOKIE,INCLUDE,EXCLUDE,SIZE,NOTE FROM CONFIG_SITE WHERE ID = ?", (tid,))
 
     @staticmethod
-    def insert_config_site(name, site_pri, rssurl, signurl, cookie, note):
+    def insert_config_site(name, site_pri, rssurl, signurl, cookie, note, rss_uses):
         """
         插入站点信息
         """
         if not name:
             return
-        sql = "INSERT INTO CONFIG_SITE(NAME,PRI,RSSURL,SIGNURL,COOKIE,NOTE) VALUES " \
-              "(?, ?, ?, ?, ?, ?)"
+        sql = "INSERT INTO CONFIG_SITE(NAME,PRI,RSSURL,SIGNURL,COOKIE,NOTE, INCLUDE) VALUES " \
+              "(?, ?, ?, ?, ?, ?, ?)"
         return DBHelper().update_by_sql(sql, (StringUtils.str_sql(name),
                                               StringUtils.str_sql(site_pri),
                                               StringUtils.str_sql(rssurl),
                                               StringUtils.str_sql(signurl),
                                               StringUtils.str_sql(cookie),
-                                              StringUtils.str_sql(note)))
+                                              StringUtils.str_sql(note),
+                                              StringUtils.str_sql(rss_uses)))
 
     @staticmethod
     def delete_config_site(tid):
@@ -425,19 +443,20 @@ class SqlHelper:
         return DBHelper().update_by_sql("DELETE FROM CONFIG_SITE WHERE ID = ?", (tid,))
 
     @staticmethod
-    def update_config_site(tid, name, site_pri, rssurl, signurl, cookie, note):
+    def update_config_site(tid, name, site_pri, rssurl, signurl, cookie, note, rss_uses):
         """
         更新站点信息
         """
         if not tid:
             return
-        sql = "UPDATE CONFIG_SITE SET NAME=?,PRI=?,RSSURL=?,SIGNURL=?,COOKIE=?,NOTE=? WHERE ID=?"
+        sql = "UPDATE CONFIG_SITE SET NAME=?,PRI=?,RSSURL=?,SIGNURL=?,COOKIE=?,NOTE=?,INCLUDE=? WHERE ID=?"
         return DBHelper().update_by_sql(sql, (StringUtils.str_sql(name),
                                               StringUtils.str_sql(site_pri),
                                               StringUtils.str_sql(rssurl),
                                               StringUtils.str_sql(signurl),
                                               StringUtils.str_sql(cookie),
                                               StringUtils.str_sql(note),
+                                              StringUtils.str_sql(rss_uses),
                                               tid))
 
     @staticmethod
@@ -481,7 +500,7 @@ class SqlHelper:
                 return DBHelper().select_by_sql(sql, (state,))
 
     @staticmethod
-    def get_rss_movie_id(title, year):
+    def get_rss_movie_id(title, year, tmdbid=None):
         """
         获取订阅电影ID
         """
@@ -491,6 +510,12 @@ class SqlHelper:
         ret = DBHelper().select_by_sql(sql, (StringUtils.str_sql(title), StringUtils.str_sql(year)))
         if ret:
             return ret[0][0]
+        else:
+            if tmdbid:
+                sql = "SELECT ID FROM RSS_MOVIES WHERE TMDBID=?"
+                ret = DBHelper().select_by_sql(sql, (tmdbid,))
+                if ret:
+                    return ret[0][0]
         return ""
 
     @staticmethod
@@ -532,7 +557,7 @@ class SqlHelper:
             return False
 
     @staticmethod
-    def insert_rss_movie(media_info: MetaBase,
+    def insert_rss_movie(media_info,
                          state='D',
                          sites: list = None,
                          search_sites: list = None,
@@ -566,18 +591,19 @@ class SqlHelper:
                                               state))
 
     @staticmethod
-    def delete_rss_movie(title=None, year=None, rssid=None):
+    def delete_rss_movie(title=None, year=None, rssid=None, tmdbid=None):
         """
         删除RSS电影
         """
         if not title and not rssid:
             return False
         if rssid:
-            sql = "DELETE FROM RSS_MOVIES WHERE ID = ?"
-            return DBHelper().update_by_sql(sql, (rssid,))
+            return DBHelper().update_by_sql("DELETE FROM RSS_MOVIES WHERE ID = ?", (rssid,))
         else:
-            sql = "DELETE FROM RSS_MOVIES WHERE NAME = ? AND YEAR = ?"
-            return DBHelper().update_by_sql(sql, (StringUtils.str_sql(title), StringUtils.str_sql(year)))
+            if tmdbid:
+                DBHelper().update_by_sql("DELETE FROM RSS_MOVIES WHERE TMDBID = ?", (tmdbid,))
+            return DBHelper().update_by_sql("DELETE FROM RSS_MOVIES WHERE NAME = ? AND YEAR = ?",
+                                            (StringUtils.str_sql(title), StringUtils.str_sql(year)))
 
     @staticmethod
     def update_rss_movie_state(title=None, year=None, rssid=None, state='R'):
@@ -617,7 +643,7 @@ class SqlHelper:
                 return DBHelper().select_by_sql(sql, (state,))
 
     @staticmethod
-    def get_rss_tv_id(title, year, season=None):
+    def get_rss_tv_id(title, year, season=None, tmdbid=None):
         """
         获取订阅电影ID
         """
@@ -626,11 +652,25 @@ class SqlHelper:
         if season:
             sql = "SELECT ID FROM RSS_TVS WHERE NAME = ? AND YEAR = ? AND SEASON = ?"
             ret = DBHelper().select_by_sql(sql, (StringUtils.str_sql(title), StringUtils.str_sql(year), season))
+            if ret:
+                return ret[0][0]
+            else:
+                if tmdbid:
+                    sql = "SELECT ID FROM RSS_TVS WHERE TMDBID=? AND SEASON = ?"
+                    ret = DBHelper().select_by_sql(sql, (tmdbid, season))
+                    if ret:
+                        return ret[0][0]
         else:
             sql = "SELECT ID FROM RSS_TVS WHERE NAME = ? AND YEAR = ?"
             ret = DBHelper().select_by_sql(sql, (StringUtils.str_sql(title), StringUtils.str_sql(year)))
-        if ret:
-            return ret[0][0]
+            if ret:
+                return ret[0][0]
+            else:
+                if tmdbid:
+                    sql = "SELECT ID FROM RSS_TVS WHERE TMDBID=?"
+                    ret = DBHelper().select_by_sql(sql, (tmdbid,))
+                    if ret:
+                        return ret[0][0]
         return ""
 
     @staticmethod
@@ -677,7 +717,7 @@ class SqlHelper:
             return False
 
     @staticmethod
-    def insert_rss_tv(media_info: MetaBase, total, lack=0, state="D",
+    def insert_rss_tv(media_info, total, lack=0, state="D",
                       sites: list = None,
                       search_sites: list = None,
                       over_edition=False,
@@ -739,7 +779,7 @@ class SqlHelper:
             return DBHelper().update_by_sql(sql, (lack, StringUtils.str_sql(title), StringUtils.str_sql(year), season))
 
     @staticmethod
-    def delete_rss_tv(title=None, year=None, season=None, rssid=None):
+    def delete_rss_tv(title=None, year=None, season=None, rssid=None, tmdbid=None):
         """
         删除RSS电视剧
         """
@@ -747,11 +787,13 @@ class SqlHelper:
             return False
         if rssid:
             SqlHelper.delete_rss_tv_episodes(rssid)
-            sql = "DELETE FROM RSS_TVS WHERE ID = ?"
-            return DBHelper().update_by_sql(sql, (rssid,))
+            return DBHelper().update_by_sql("DELETE FROM RSS_TVS WHERE ID = ?", (rssid,))
         else:
-            sql = "DELETE FROM RSS_TVS WHERE NAME = ? AND YEAR = ? AND SEASON = ?"
-            return DBHelper().update_by_sql(sql, (StringUtils.str_sql(title), StringUtils.str_sql(year), season))
+            rssid = SqlHelper.get_rss_tv_id(title=title, year=year, tmdbid=tmdbid, season=season)
+            if rssid:
+                SqlHelper.delete_rss_tv_episodes(rssid)
+                return SqlHelper.delete_rss_tv(rssid=rssid)
+            return False
 
     @staticmethod
     def is_exists_rss_tv_episodes(rid):
@@ -1141,7 +1183,7 @@ class SqlHelper:
             return False
 
     @staticmethod
-    def insert_download_history(media_info: MetaBase):
+    def insert_download_history(media_info):
         """
         新增下载历史
         """
@@ -1437,6 +1479,16 @@ class SqlHelper:
         return DBHelper().update_by_sql_batch(sql, ids)
 
     @staticmethod
+    def delete_brushtask_torrent(brush_id, download_id):
+        """
+        删除刷流种子记录
+        """
+        if not download_id or not brush_id:
+            return
+        sql = "DELETE FROM SITE_BRUSH_TORRENTS WHERE TASK_ID = ? AND DOWNLOAD_ID = ?"
+        return DBHelper().update_by_sql(sql, (brush_id, download_id))
+
+    @staticmethod
     def get_user_downloaders(did=None):
         """
         查询自定义下载器
@@ -1551,3 +1603,104 @@ class SqlHelper:
                                                   item.get("exclude"),
                                                   item.get("size"),
                                                   item.get("free")))
+
+    @staticmethod
+    def get_userrss_tasks(taskid=None):
+        if taskid:
+            return DBHelper().select_by_sql(
+                "SELECT ID,NAME,ADDRESS,PARSER,INTERVAL,USES,INCLUDE,EXCLUDE,FILTER,UPDATE_TIME,PROCESS_COUNT,STATE,NOTE "
+                "FROM CONFIG_USER_RSS "
+                "WHERE ID = ?", (taskid,))
+        else:
+            return DBHelper().select_by_sql(
+                "SELECT ID,NAME,ADDRESS,PARSER,INTERVAL,USES,INCLUDE,EXCLUDE,FILTER,UPDATE_TIME,PROCESS_COUNT,STATE,NOTE "
+                "FROM CONFIG_USER_RSS")
+
+    @staticmethod
+    def delete_userrss_task(tid):
+        if not tid:
+            return False
+        return DBHelper().update_by_sql(
+            "DELETE FROM CONFIG_USER_RSS WHERE ID = ?", (tid,))
+
+    @staticmethod
+    def update_userrss_task_info(tid, count):
+        if not tid:
+            return False
+        return DBHelper().update_by_sql(
+            "UPDATE CONFIG_USER_RSS SET PROCESS_COUNT = ?, UPDATE_TIME = ? WHERE ID = ?",
+            (count, time.strftime('%Y-%m-%d %H:%M:%S',
+                                  time.localtime(time.time())), tid))
+
+    @staticmethod
+    def update_userrss_task(item):
+        if item.get("id") and SqlHelper.get_userrss_tasks(item.get("id")):
+            return DBHelper().update_by_sql("UPDATE CONFIG_USER_RSS "
+                                            "SET NAME=?,ADDRESS=?,PARSER=?,INTERVAL=?,USES=?,INCLUDE=?,EXCLUDE=?,FILTER=?,UPDATE_TIME=?,STATE=?"
+                                            "WHERE ID=?", (item.get("name"),
+                                                           item.get("address"),
+                                                           item.get("parser"),
+                                                           item.get("interval"),
+                                                           item.get("uses"),
+                                                           item.get("include"),
+                                                           item.get("exclude"),
+                                                           item.get("filterrule"),
+                                                           time.strftime('%Y-%m-%d %H:%M:%S',
+                                                                         time.localtime(time.time())),
+                                                           item.get("state"),
+                                                           item.get("id")))
+        else:
+            return DBHelper().update_by_sql("INSERT INTO CONFIG_USER_RSS"
+                                            "(NAME,ADDRESS,PARSER,INTERVAL,USES,INCLUDE,EXCLUDE,FILTER,UPDATE_TIME,PROCESS_COUNT,STATE) "
+                                            "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (item.get("name"),
+                                                                               item.get("address"),
+                                                                               item.get("parser"),
+                                                                               item.get("interval"),
+                                                                               item.get("uses"),
+                                                                               item.get("include"),
+                                                                               item.get("exclude"),
+                                                                               item.get("filterrule"),
+                                                                               time.strftime('%Y-%m-%d %H:%M:%S',
+                                                                                             time.localtime(
+                                                                                                 time.time())),
+                                                                               "0",
+                                                                               item.get("state")))
+
+    @staticmethod
+    def get_userrss_parser(pid=None):
+        if pid:
+            return DBHelper().select_by_sql(
+                "SELECT ID,NAME,TYPE,FORMAT,PARAMS,NOTE FROM CONFIG_RSS_PARSER WHERE ID = ?", (pid,))
+        else:
+            return DBHelper().select_by_sql(
+                "SELECT ID,NAME,TYPE,FORMAT,PARAMS,NOTE FROM CONFIG_RSS_PARSER")
+
+    @staticmethod
+    def delete_userrss_parser(pid):
+        if not pid:
+            return False
+        return DBHelper().update_by_sql(
+            "DELETE FROM CONFIG_RSS_PARSER WHERE ID = ?", (pid,))
+
+    @staticmethod
+    def update_userrss_parser(item):
+        if not item:
+            return False
+        if item.get("id") and SqlHelper.get_userrss_parser(item.get("id")):
+            return DBHelper().update_by_sql("UPDATE CONFIG_RSS_PARSER "
+                                            "SET NAME=?,TYPE=?,FORMAT=?,PARAMS=? "
+                                            "WHERE ID=?", (item.get("name"),
+                                                           item.get("type"),
+                                                           item.get("format"),
+                                                           item.get("params"),
+                                                           item.get("id")))
+        else:
+            return DBHelper().update_by_sql("INSERT INTO CONFIG_RSS_PARSER(NAME, TYPE, FORMAT, PARAMS) "
+                                            "VALUES (?,?,?,?)", (item.get("name"),
+                                                                 item.get("type"),
+                                                                 item.get("format"),
+                                                                 item.get("params")))
+
+    @staticmethod
+    def excute(sql):
+        return DBHelper().update_by_sql(sql)

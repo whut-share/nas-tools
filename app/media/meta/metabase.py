@@ -3,7 +3,7 @@ import cn2an
 from app.media.fanart import Fanart
 from config import ANIME_GENREIDS, DEFAULT_TMDB_IMAGE, TMDB_IMAGE_W500_URL
 from app.media.category import Category
-from app.utils.string_utils import StringUtils
+from app.utils import StringUtils
 from app.utils.types import MediaType
 
 
@@ -100,10 +100,10 @@ class MetaBase(object):
     _subtitle_episode_all_re = r"([0-9一二三四五六七八九十]+)\s*集全|全\s*([0-9一二三四五六七八九十]+)\s*集"
 
     def __init__(self, title, subtitle=None, fileflag=False):
-        if not title:
-            return
         self.category_handler = Category()
         self.fanart = Fanart()
+        if not title:
+            return
         self.org_string = title
         self.subtitle = subtitle
         self.fileflag = fileflag

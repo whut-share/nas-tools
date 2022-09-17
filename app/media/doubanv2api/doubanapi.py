@@ -6,7 +6,7 @@ from functools import lru_cache
 import requests
 
 from app.utils.commons import singleton
-from app.utils.http_utils import RequestUtils
+from app.utils import RequestUtils
 
 logger = logging.getLogger(__name__)
 
@@ -177,8 +177,17 @@ class DoubanApi(object):
     def movie_detail(self, subject_id):
         return self.__invoke(self._urls["movie_detail"] + subject_id)
 
+    def movie_celebrities(self, subject_id):
+        return self.__invoke(self._urls["movie_celebrities"] % subject_id)
+
     def tv_detail(self, subject_id):
         return self.__invoke(self._urls["tv_detail"] + subject_id)
 
+    def tv_celebrities(self, subject_id):
+        return self.__invoke(self._urls["tv_celebrities"] % subject_id)
+
     def book_detail(self, subject_id):
         return self.__invoke(self._urls["book_detail"] + subject_id)
+
+    def movie_top250(self, start=0, count=20, ts=datetime.strftime(datetime.now(), '%Y%m%d')):
+        return self.__invoke(self._urls["movie_top250"], start=start, count=count, _ts=ts)

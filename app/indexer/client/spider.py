@@ -1,18 +1,18 @@
 import copy
 import re
 import traceback
+from urllib.parse import quote
 
 from requests.utils import dict_from_cookiejar
 
 import feapder
-from app.utils.http_utils import RequestUtils
+from app.utils import RequestUtils, StringUtils
+from config import Config
 from feapder.utils.tools import urlencode
 from jinja2 import Template
 from pyquery import PyQuery
 
 import log
-from app.indexer.indexer_conf import IndexerConf
-from app.utils.string_utils import StringUtils
 
 
 class TorrentSpider(feapder.AirSpider):
@@ -38,25 +38,30 @@ class TorrentSpider(feapder.AirSpider):
         )
     )
     is_complete = False
+    indexerid = None
     cookies = None
     keyword = None
     torrents_info_array = []
     indexer = None
+    search = None
     domain = None
+    torrents = None
     torrents_info = {}
     article_list = None
     fields = None
 
-    def setparam(self, indexer: IndexerConf, keyword, user_agent=None):
+    def setparam(self, indexer, keyword):
         if not indexer or not keyword:
             return
         self.keyword = keyword
-        self.indexer = indexer
+        self.indexerid = indexer.id
+        self.search = indexer.search
+        self.torrents = indexer.torrents
         self.domain = indexer.domain
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"
-        if self.indexer.cookie:
-            self.cookies = self.indexer.cookie
+        if indexer.cookie:
+            self.cookies = indexer.cookie
         else:
             try:
                 res = RequestUtils().get_res(self.domain)
@@ -64,15 +69,22 @@ class TorrentSpider(feapder.AirSpider):
                     self.cookies = dict_from_cookiejar(res.cookies)
             except Exception as err:
                 log.warn(f"【SPIDER】获取 {self.domain} cookie失败：{format(err)}")
-        if user_agent:
-            self.__custom_setting__['WEBDRIVER']['user_agent'] = user_agent
+        config = Config()
+        self.__custom_setting__['WEBDRIVER']['user_agent'] = config.get_config('app').get('user_agent')
+        if indexer.proxy:
+            self.__custom_setting__['WEBDRIVER']['proxy'] = config.get_proxies()
+        else:
+            self.__custom_setting__['WEBDRIVER']['proxy'] = None
         self.torrents_info_array = []
 
     def start_requests(self):
-        if self.indexer.search:
-            torrentspath = self.indexer.search.get('paths', [{}])[0].get('path', '')
-            searchurl = self.domain + torrentspath + '?stypes=s&' + urlencode(
-                {"search": self.keyword, "search_field": self.keyword, "keyword": self.keyword})
+        if self.search:
+            torrentspath = self.search.get('paths', [{}])[0].get('path', '')
+            if torrentspath.find("{keyword}") != -1:
+                searchurl = self.domain + torrentspath.replace("{keyword}", quote(self.keyword))
+            else:
+                searchurl = self.domain + torrentspath + '?stypes=s&' + urlencode(
+                    {"search": self.keyword, "search_field": self.keyword, "keyword": self.keyword})
             yield feapder.Request(searchurl, cookies=self.cookies)
         else:
             self.is_complete = True
@@ -291,7 +303,7 @@ class TorrentSpider(feapder.AirSpider):
         """
         解析单条种子数据
         """
-        self.torrents_info = {'indexer': self.indexer.id}
+        self.torrents_info = {'indexer': self.indexerid}
         self.Gettitle_default(torrent)
         self.Gettitle_optional(torrent)
         self.Getgrabs(torrent)
@@ -316,10 +328,10 @@ class TorrentSpider(feapder.AirSpider):
             # 获取网站信息
             self.article_list = response.extract()
             # 获取站点种子xml
-            self.fields = self.indexer.torrents.get('fields')
+            self.fields = self.torrents.get('fields')
             doc = PyQuery(self.article_list)
             # 种子筛选器
-            torrents_selector = self.indexer.torrents.get('list', {}).get('selector', '')
+            torrents_selector = self.torrents.get('list', {}).get('selector', '')
             str_list = list(torrents_selector)
             # 兼容选择器中has()函数 部分情况下无双引号会报错
             has_index = torrents_selector.find('has')
@@ -339,6 +351,8 @@ class TorrentSpider(feapder.AirSpider):
             # 遍历种子html列表
             for torn in doc(torrents_selector):
                 self.torrents_info_array.append(copy.deepcopy(self.Getinfo(PyQuery(torn))))
+                if len(self.torrents_info_array) >= 100:
+                    break
 
         except Exception as err:
             log.warn("【SPIDER】错误：%s - %s" % (str(err), traceback.format_exc()))

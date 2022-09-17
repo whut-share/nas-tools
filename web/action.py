@@ -8,47 +8,35 @@ import signal
 from flask_login import logout_user
 from werkzeug.security import generate_password_hash
 
+import cn2an
 import log
-from app.utils.string_utils import StringUtils
+from app.media.doubanv2api import DoubanHot
+from app.mediaserver import MediaServer
+from app.rsschecker import RssChecker
+from app.utils import StringUtils, Torrent, EpisodeFormat, ProgressController, RequestUtils, PathUtils, MessageCenter, \
+    ThreadHelper, MetaHelper
+from app.utils.types import RMT_MODES
 from config import RMT_MEDIAEXT, Config, TMDB_IMAGE_W500_URL, TMDB_IMAGE_ORIGINAL_URL
-from app.message.channel.telegram import Telegram
-from app.message.channel.wechat import WeChat
-from app.message.message import Message
+from app.message import Telegram, WeChat, Message
 from app.brushtask import BrushTask
-from app.downloader.client.qbittorrent import Qbittorrent
-from app.downloader.client.transmission import Transmission
+from app.downloader import Qbittorrent, Transmission, Downloader
 from app.douban import DouBan
-from app.downloader.downloader import Downloader
 from app.filterrules import FilterRule
-from app.mediaserver.server.emby import Emby
-from app.mediaserver.server.jellyfin import Jellyfin
-from app.mediaserver.server.plex import Plex
+from app.mediaserver import Emby, Jellyfin, Plex
 from app.rss import Rss
-from app.sites.siteconf import get_grapsite_conf
-from app.sites.sites import Sites
+from app.sites import SiteConf, Sites
 from app.subtitle import Subtitle
-from app.utils.torrent import Torrent
-from app.media.category import Category
-from app.media.doubanv2api.doubanapi import DoubanApi
+from app.media import Category, Media, MetaInfo
+from app.media.doubanv2api import DoubanApi
 from app.filetransfer import FileTransfer
-from app.media.media import Media
-from app.media.meta.metainfo import MetaInfo
 from app.scheduler import stop_scheduler, restart_scheduler
 from app.sync import stop_monitor, restart_monitor
 from app.scheduler import Scheduler
 from app.sync import Sync
-from app.utils.commons import EpisodeFormat, ProcessHandler
-from app.utils.http_utils import RequestUtils
-from app.media.meta_helper import MetaHelper
-from app.utils.path_utils import PathUtils
-from app.utils.sysmsg_helper import MessageCenter
-from app.utils.thread_helper import ThreadHelper
 from app.utils.types import SearchType, DownloaderType, SyncType, MediaType, SystemDictType
-from web.backend.douban_hot import DoubanHot
 from web.backend.search_torrents import search_medias_for_web, search_media_by_message
 from web.backend.subscribe import add_rss_subscribe
-from app.db.sql_helper import SqlHelper
-from app.db.dict_helper import DictHelper
+from app.db import SqlHelper, DictHelper
 
 
 class WebAction:
@@ -103,6 +91,7 @@ class WebAction:
             "rule_test": self.__rule_test,
             "net_test": self.__net_test,
             "add_filtergroup": self.__add_filtergroup,
+            "restore_filtergroup": self.__restore_filtergroup,
             "set_default_filtergroup": self.__set_default_filtergroup,
             "del_filtergroup": self.__del_filtergroup,
             "add_filterrule": self.__add_filterrule,
@@ -117,7 +106,16 @@ class WebAction:
             "check_site_attr": self.__check_site_attr,
             "refresh_process": self.__refresh_process,
             "get_download_dirs": self.get_download_dirs,
-            "restory_backup": self.__restory_backup
+            "restory_backup": self.__restory_backup,
+            "start_mediasync": self.__start_mediasync,
+            "mediasync_state": self.__mediasync_state,
+            "get_tvseason_list": self.__get_tvseason_list,
+            "get_userrss_task": self.__get_userrss_task,
+            "delete_userrss_task": self.__delete_userrss_task,
+            "update_userrss_task": self.__update_userrss_task,
+            "get_rssparser": self.__get_rssparser,
+            "delete_rssparser": self.__delete_rssparser,
+            "update_rssparser": self.__update_rssparser
         }
 
     def action(self, cmd, data):
@@ -486,6 +484,7 @@ class WebAction:
         手工转移
         """
         path = dest_dir = None
+        syncmod = RMT_MODES.get(data.get("syncmod"))
         logid = data.get("logid")
         if logid:
             paths = SqlHelper.get_transfer_path_by_id(logid)
@@ -529,10 +528,11 @@ class WebAction:
             path = os.path.dirname(path)
             need_fix_all = True
         # 手工识别的内容全部加入缓存
-        MetaHelper().save_rename_cache(path, tmdb_info)
+        Media().save_rename_cache(path, tmdb_info)
         # 开始转移
         succ_flag, ret_msg = FileTransfer().transfer_media(in_from=SyncType.MAN,
                                                            in_path=path,
+                                                           rmt_mode=syncmod,
                                                            target_dir=dest_dir,
                                                            tmdb_info=tmdb_info,
                                                            media_type=media_type,
@@ -553,6 +553,7 @@ class WebAction:
         """
         inpath = data.get("inpath")
         outpath = data.get("outpath")
+        syncmod = RMT_MODES.get(data.get("syncmod"))
         if not os.path.exists(inpath):
             return {"retcode": -1, "retmsg": "输入路径不存在"}
         tmdbid = data.get("tmdb")
@@ -574,10 +575,11 @@ class WebAction:
         if not tmdb_info:
             return {"retcode": 1, "retmsg": "识别失败，无法查询到TMDB信息"}
         # 手工识别的内容全部加入缓存
-        MetaHelper().save_rename_cache(inpath, tmdb_info)
+        Media().save_rename_cache(inpath, tmdb_info)
         # 自定义转移
         succ_flag, ret_msg = FileTransfer().transfer_media(in_from=SyncType.MAN,
                                                            in_path=inpath,
+                                                           rmt_mode=syncmod,
                                                            target_dir=outpath,
                                                            tmdb_info=tmdb_info,
                                                            media_type=media_type,
@@ -689,6 +691,7 @@ class WebAction:
         signurl = data.get('site_signurl')
         cookie = data.get('site_cookie')
         note = data.get('site_note')
+        rss_uses = data.get('site_include')
         if tid:
             ret = SqlHelper.update_config_site(tid=tid,
                                                name=name,
@@ -696,14 +699,16 @@ class WebAction:
                                                rssurl=rssurl,
                                                signurl=signurl,
                                                cookie=cookie,
-                                               note=note)
+                                               note=note,
+                                               rss_uses=rss_uses)
         else:
             ret = SqlHelper.insert_config_site(name=name,
                                                site_pri=site_pri,
                                                rssurl=rssurl,
                                                signurl=signurl,
                                                cookie=cookie,
-                                               note=note)
+                                               note=note,
+                                               rss_uses=rss_uses)
         # 生效站点配置
         Sites().init_config()
         return {"code": ret}
@@ -720,7 +725,7 @@ class WebAction:
         if tid:
             ret = Sites().get_sites(siteid=tid)
             if ret.get("rssurl"):
-                site_attr = get_grapsite_conf(ret.get("rssurl"))
+                site_attr = SiteConf().get_grapsite_conf(ret.get("rssurl"))
                 if site_attr.get("FREE"):
                     site_free = True
                 if site_attr.get("2XFREE"):
@@ -802,6 +807,7 @@ class WebAction:
         telegram_reload = False
         category_reload = False
         subtitle_reload = False
+        sites_reload = False
         # 修改配置
         for key, value in cfgs:
             if key == "test" and value:
@@ -810,7 +816,7 @@ class WebAction:
             # 生效配置
             cfg = self.set_config_value(cfg, key, value)
             if key in ['pt.ptsignin_cron', 'pt.pt_monitor', 'pt.pt_check_interval', 'pt.pt_seeding_time',
-                       'douban.interval']:
+                       'douban.interval', 'media.mediasync_interval']:
                 scheduler_reload = True
             if key.startswith("emby"):
                 emby_reload = True
@@ -826,6 +832,8 @@ class WebAction:
                 category_reload = True
             if key.startswith("subtitle"):
                 subtitle_reload = True
+            if key.startswith("message.switch"):
+                sites_reload = True
         # 保存配置
         if not config_test:
             self.config.save_config(cfg)
@@ -854,6 +862,9 @@ class WebAction:
         # 重载字幕
         if subtitle_reload:
             Subtitle().init_config()
+        # 重载站点
+        if sites_reload:
+            Sites().init_config()
 
         return {"code": 0}
 
@@ -886,16 +897,14 @@ class WebAction:
         season = data.get("season")
         rssid = data.get("rssid")
         page = data.get("page")
+        tmdbid = data.get("tmdbid")
         if name:
-            meta_info = MetaInfo(title=name)
-            name = meta_info.get_name()
-            if not season:
-                season = meta_info.get_season_string()
+            name = MetaInfo(title=name).get_name()
         if mtype:
-            if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'MOV']:
-                SqlHelper.delete_rss_movie(title=name, year=year, rssid=rssid)
+            if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'dbtop', 'MOV']:
+                SqlHelper.delete_rss_movie(title=name, year=year, rssid=rssid, tmdbid=tmdbid)
             else:
-                SqlHelper.delete_rss_tv(title=name, year=year, season=season, rssid=rssid)
+                SqlHelper.delete_rss_tv(title=name, year=year, season=season, rssid=rssid, tmdbid=tmdbid)
         return {"code": 0, "page": page, "name": name}
 
     @staticmethod
@@ -920,25 +929,47 @@ class WebAction:
         rss_rule = data.get("rss_rule")
         rssid = data.get("rssid")
         if name and mtype:
-            if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'MOV']:
+            if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'dbtop', 'MOV']:
                 mtype = MediaType.MOVIE
             else:
                 mtype = MediaType.TV
-        code, msg, media_info = add_rss_subscribe(mtype=mtype,
-                                                  name=name,
-                                                  year=year,
-                                                  season=season,
-                                                  match=match,
-                                                  doubanid=doubanid,
-                                                  tmdbid=tmdbid,
-                                                  sites=sites,
-                                                  search_sites=search_sites,
-                                                  over_edition=over_edition,
-                                                  rss_restype=rss_restype,
-                                                  rss_pix=rss_pix,
-                                                  rss_team=rss_team,
-                                                  rss_rule=rss_rule,
-                                                  rssid=rssid)
+        if isinstance(season, list):
+            code = 0
+            msg = ""
+            for sea in season:
+                code, msg, media_info = add_rss_subscribe(mtype=mtype,
+                                                          name=name,
+                                                          year=year,
+                                                          season=sea,
+                                                          match=match,
+                                                          doubanid=doubanid,
+                                                          tmdbid=tmdbid,
+                                                          sites=sites,
+                                                          search_sites=search_sites,
+                                                          over_edition=over_edition,
+                                                          rss_restype=rss_restype,
+                                                          rss_pix=rss_pix,
+                                                          rss_team=rss_team,
+                                                          rss_rule=rss_rule,
+                                                          rssid=rssid)
+                if code != 0:
+                    break
+        else:
+            code, msg, media_info = add_rss_subscribe(mtype=mtype,
+                                                      name=name,
+                                                      year=year,
+                                                      season=season,
+                                                      match=match,
+                                                      doubanid=doubanid,
+                                                      tmdbid=tmdbid,
+                                                      sites=sites,
+                                                      search_sites=search_sites,
+                                                      over_edition=over_edition,
+                                                      rss_restype=rss_restype,
+                                                      rss_pix=rss_pix,
+                                                      rss_team=rss_team,
+                                                      rss_rule=rss_rule,
+                                                      rssid=rssid)
         return {"code": code, "msg": msg, "page": page, "name": name}
 
     @staticmethod
@@ -980,7 +1011,7 @@ class WebAction:
         page = data.get("page")
         doubanid = data.get("doubanid")
         rssid = data.get("rssid")
-        if mtype in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm', 'MOV']:
+        if mtype in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm', 'dbtop', 'MOV']:
             media_type = MediaType.MOVIE
         else:
             media_type = MediaType.TV
@@ -1008,13 +1039,13 @@ class WebAction:
                 poster_path = TMDB_IMAGE_W500_URL % tmdb_info.get('poster_path') if tmdb_info.get(
                     'poster_path') else ""
                 title = tmdb_info.get('title')
-                vote_average = tmdb_info.get("vote_average")
+                vote_average = round(float(tmdb_info.get("vote_average")), 1)
                 release_date = tmdb_info.get('release_date')
                 year = release_date[0:4] if release_date else ""
 
             # 查订阅信息
             if not rssid:
-                rssid = SqlHelper.get_rss_movie_id(title=title, year=year)
+                rssid = SqlHelper.get_rss_movie_id(title=title, year=year, tmdbid=tmdbid or "DB:%s" % doubanid)
 
             # 查下载信息
 
@@ -1032,7 +1063,8 @@ class WebAction:
                 "link_url": link_url,
                 "tmdbid": tmdbid,
                 "doubanid": doubanid,
-                "rssid": rssid
+                "rssid": rssid,
+                "seasons": []
             }
         else:
             # 查媒体信息
@@ -1048,6 +1080,7 @@ class WebAction:
                 vote_average = rating.get("value") or ""
                 release_date = douban_info.get("pubdate")
                 year = douban_info.get("year")
+                seasons = []
             else:
                 link_url = "https://www.themoviedb.org/tv/%s" % tmdbid
                 tmdb_info = Media().get_tmdb_info(media_type, title, year, tmdbid)
@@ -1057,13 +1090,16 @@ class WebAction:
                 poster_path = TMDB_IMAGE_W500_URL % tmdb_info.get('poster_path') if tmdb_info.get(
                     'poster_path') else ""
                 title = tmdb_info.get('name')
-                vote_average = tmdb_info.get("vote_average")
+                vote_average = round(float(tmdb_info.get("vote_average")), 1)
                 release_date = tmdb_info.get('first_air_date')
                 year = release_date[0:4] if release_date else ""
+                seasons = [{"text": "第%s季" % cn2an.an2cn(season.get("season_number"), mode='low'),
+                            "num": season.get("season_number")} for season in
+                           Media().get_tmdb_seasons_list(tv_info=tmdb_info)]
 
             # 查订阅信息
             if not rssid:
-                rssid = SqlHelper.get_rss_tv_id(title=title, year=year)
+                rssid = SqlHelper.get_rss_tv_id(title=title, year=year, tmdbid=tmdbid or "DB:%s" % doubanid)
 
             return {
                 "code": 0,
@@ -1079,7 +1115,8 @@ class WebAction:
                 "link_url": link_url,
                 "tmdbid": tmdbid,
                 "doubanid": doubanid,
-                "rssid": rssid
+                "rssid": rssid,
+                "seasons": seasons
             }
 
     def __test_connection(self, data):
@@ -1356,6 +1393,7 @@ class WebAction:
         brushtask_state = data.get("brushtask_state")
         brushtask_transfer = 'Y' if data.get("brushtask_transfer") else 'N'
         brushtask_sendmessage = 'Y' if data.get("brushtask_sendmessage") else 'N'
+        brushtask_forceupload = 'Y' if data.get("brushtask_forceupload") else 'N'
         brushtask_free = data.get("brushtask_free")
         brushtask_hr = data.get("brushtask_hr")
         brushtask_torrent_size = data.get("brushtask_torrent_size")
@@ -1402,7 +1440,9 @@ class WebAction:
         SqlHelper.insert_brushtask(brushtask_id, item)
 
         # 存储消息开关
-        DictHelper.set(SystemDictType.BrushMessageSwitch.value, brushtask_id, brushtask_sendmessage)
+        DictHelper.set(SystemDictType.BrushMessageSwitch.value, brushtask_site, brushtask_sendmessage)
+        # 存储是否强制做种的开关
+        DictHelper.set(SystemDictType.BrushForceUpSwitch.value, brushtask_site, brushtask_forceupload)
 
         # 重新初始化任务
         BrushTask().init_config()
@@ -1431,7 +1471,8 @@ class WebAction:
         if not brushtask:
             return {"code": 1, "task": {}}
         scheme, netloc = StringUtils.get_url_netloc(brushtask[0][17])
-        sendmessage_switch = DictHelper.get(SystemDictType.BrushMessageSwitch.value, brushtask[0][0])
+        sendmessage_switch = DictHelper.get(SystemDictType.BrushMessageSwitch.value, brushtask[0][2])
+        forceupload_switch = DictHelper.get(SystemDictType.BrushForceUpSwitch.value, brushtask[0][2])
         task = {
             "id": brushtask[0][0],
             "name": brushtask[0][1],
@@ -1450,7 +1491,8 @@ class WebAction:
             "upload_size": StringUtils.str_filesize(brushtask[0][15]),
             "lst_mod_date": brushtask[0][16],
             "site_url": "%s://%s" % (scheme, netloc),
-            "sendmessage": sendmessage_switch
+            "sendmessage": sendmessage_switch,
+            "forceupload": forceupload_switch
         }
         return {"code": 0, "task": task}
 
@@ -1630,6 +1672,25 @@ class WebAction:
         return {"code": 0}
 
     @staticmethod
+    def __restore_filtergroup(data):
+        """
+        恢复初始规则组
+        """
+        groupids = data.get("groupids")
+        init_rulegroups = data.get("init_rulegroups")
+        for groupid in groupids:
+            try:
+                SqlHelper.delete_filtergroup(groupid)
+            except Exception as err:
+                print(err)
+            for init_rulegroup in init_rulegroups:
+                if str(init_rulegroup.get("id")) == groupid:
+                    for sql in init_rulegroup.get("sql"):
+                        SqlHelper.excute(sql)
+        FilterRule().init_config()
+        return {"code": 0}
+
+    @staticmethod
     def __set_default_filtergroup(data):
         groupid = data.get("id")
         if not groupid:
@@ -1713,6 +1774,9 @@ class WebAction:
         elif RecommendType == "dbnm":
             # 豆瓣最新电影
             res_list = DoubanHot().get_douban_new_movie(CurrentPage)
+        elif RecommendType == "dbtop":
+            # 豆瓣TOP250电影
+            res_list = DoubanHot().get_douban_top250_movie(CurrentPage)
         elif RecommendType == "dbzy":
             # 豆瓣最新电视剧
             res_list = DoubanHot().get_douban_hot_show(CurrentPage)
@@ -1720,13 +1784,10 @@ class WebAction:
             res_list = []
 
         Items = []
-        TvKeys = ["%s" % key[0] for key in SqlHelper.get_rss_tvs()]
-        TvMediaIds = ["%s" % key[3] for key in SqlHelper.get_rss_tvs()]
-        MovieKeys = ["%s" % key[0] for key in SqlHelper.get_rss_movies()]
-        MovieMediaIds = ["%s" % key[2] for key in SqlHelper.get_rss_movies()]
         for res in res_list:
             rid = res.get('id')
-            if RecommendType in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm']:
+            orgid = rid
+            if RecommendType in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm', 'dbtop']:
                 title = res.get('title')
                 date = res.get('release_date')
                 if date:
@@ -1734,10 +1795,13 @@ class WebAction:
                 else:
                     year = ''
                 name = MetaInfo(title).get_name()
-                if name in MovieKeys or str(rid) in MovieMediaIds or "DB:%s" % rid in MovieMediaIds:
+                if RecommendType not in ['hm', 'nm']:
+                    rid = "DB:%s" % rid
+                rssid = SqlHelper.get_rss_movie_id(title=name, year=year, tmdbid=rid)
+                if rssid:
                     # 已订阅
                     fav = 1
-                elif SqlHelper.is_media_downloaded(name, rid):
+                elif MediaServer().check_item_exists(title=name, year=year, tmdbid=rid):
                     # 已下载
                     fav = 2
                 else:
@@ -1751,10 +1815,13 @@ class WebAction:
                 else:
                     year = ''
                 name = MetaInfo(title).get_name()
-                if name in TvKeys or str(rid) in TvMediaIds or "DB:%s" % rid in TvMediaIds:
+                if RecommendType not in ['ht', 'nt']:
+                    rid = "DB:%s" % rid
+                rssid = SqlHelper.get_rss_tv_id(title=name, year=year, tmdbid=rid)
+                if rssid:
                     # 已订阅
                     fav = 1
-                elif SqlHelper.is_media_downloaded(name, rid):
+                elif MediaServer().check_item_exists(title=name, year=year, tmdbid=rid):
                     # 已下载
                     fav = 2
                 else:
@@ -1769,13 +1836,15 @@ class WebAction:
             vote = res.get('vote_average')
             overview = res.get('overview')
             item = {'id': rid,
+                    'orgid': orgid,
                     'title': title,
                     'fav': fav,
                     'date': date,
                     'vote': vote,
                     'image': image,
                     'overview': overview,
-                    'year': year}
+                    'year': year,
+                    'rssid': rssid}
             Items.append(item)
         return {"code": 0, "Items": Items}
 
@@ -1911,7 +1980,7 @@ class WebAction:
         """
         检查站点标识
         """
-        site_attr = get_grapsite_conf(data.get("url"))
+        site_attr = SiteConf().get_grapsite_conf(data.get("url"))
         site_free = site_2xfree = site_hr = False
         if site_attr.get("FREE"):
             site_free = True
@@ -1926,11 +1995,11 @@ class WebAction:
         """
         刷新进度条
         """
-        detail = ProcessHandler().get_process()
+        detail = ProgressController().get_process(data.get("type"))
         if detail:
             return {"code": 0, "value": detail.get("value"), "text": detail.get("text")}
         else:
-            return {"code": 1}
+            return {"code": 1, "value": 0, "text": "正在处理..."}
 
     @staticmethod
     def get_download_dirs(data=None):
@@ -1972,3 +2041,112 @@ class WebAction:
                     os.remove(file_path)
 
         return {"code": 1, "msg": "文件不存在"}
+
+    @staticmethod
+    def __start_mediasync(data):
+        """
+        开始媒体库同步
+        """
+        ThreadHelper().start_thread(MediaServer().sync_mediaserver, ())
+        return {"code": 0}
+
+    @staticmethod
+    def __mediasync_state(data):
+        """
+        获取媒体库同步数据情况
+        """
+        status = MediaServer().get_mediasync_status()
+        if not status:
+            return {"code": 0, "text": "未同步"}
+        else:
+            return {"code": 0, "text": "电影：%s，电视剧：%s，同步时间：%s" % (status.get("movie_count"),
+                                                                 status.get("tv_count"),
+                                                                 status.get("time"))}
+
+    @staticmethod
+    def __get_tvseason_list(data):
+        """
+        获取剧集季列表
+        """
+        tmdbid = data.get("tmdbid")
+        seasons = [
+            {"text": "第%s季" % cn2an.an2cn(season.get("season_number"), mode='low'), "num": season.get("season_number")}
+            for season in Media().get_tmdb_seasons_list(tmdbid=tmdbid)]
+        return {"code": 0, "seasons": seasons}
+
+    @staticmethod
+    def __get_userrss_task(data):
+        """
+        获取自定义订阅详情
+        """
+        taskid = data.get("id")
+        return {"code": 0, "detail": RssChecker().get_rsstask_info(taskid=taskid)}
+
+    @staticmethod
+    def __delete_userrss_task(data):
+        """
+        删除自定义订阅
+        """
+        if SqlHelper.delete_userrss_task(data.get("id")):
+            RssChecker().init_config()
+            return {"code": 0}
+        else:
+            return {"code": 1}
+
+    @staticmethod
+    def __update_userrss_task(data):
+        """
+        新增或修改自定义订阅
+        """
+        params = {
+            "id": data.get("id"),
+            "name": data.get("name"),
+            "address": data.get("address"),
+            "parser": data.get("parser"),
+            "interval": data.get("interval"),
+            "uses": data.get("uses"),
+            "include": data.get("include"),
+            "exclude": data.get("exclude"),
+            "filterrule": data.get("filterrule"),
+            "state": data.get("state")
+        }
+        if SqlHelper.update_userrss_task(params):
+            RssChecker().init_config()
+            return {"code": 0}
+        else:
+            return {"code": 1}
+
+    @staticmethod
+    def __get_rssparser(data):
+        """
+        获取订阅解析器详情
+        """
+        pid = data.get("id")
+        return {"code": 0, "detail": RssChecker().get_userrss_parser(pid=pid)}
+
+    @staticmethod
+    def __delete_rssparser(data):
+        """
+        删除订阅解析器
+        """
+        if SqlHelper.delete_userrss_parser(data.get("id")):
+            return {"code": 0}
+        else:
+            return {"code": 1}
+
+    @staticmethod
+    def __update_rssparser(data):
+        """
+        新增或更新订阅解析器
+        """
+        params = {
+            "id": data.get("id"),
+            "name": data.get("name"),
+            "type": data.get("type"),
+            "format": data.get("format"),
+            "params": data.get("params")
+        }
+        if SqlHelper.update_userrss_parser(params):
+            return {"code": 0}
+        else:
+            return {"code": 1}

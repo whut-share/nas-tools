@@ -5,13 +5,12 @@ from multiprocessing.dummy import Pool as ThreadPool
 from threading import Lock
 
 import log
-from app.message.message import Message
+from app.message import Message
 from app.filterrules import FilterRule
-from app.sites.siteuserinfo.site_user_info_factory import SiteUserInfoFactory
+from app.sites import SiteUserInfoFactory
 from app.utils.commons import singleton
-from app.utils.http_utils import RequestUtils
-from app.db.sql_helper import SqlHelper
-from app.utils.string_utils import StringUtils
+from app.utils import RequestUtils, StringUtils
+from app.db import SqlHelper
 
 lock = Lock()
 
@@ -35,7 +34,13 @@ class Sites:
         self.__sites_data = {}
         self.__last_update_time = None
 
-    def get_sites(self, siteid=None, siteurl=None, rss=False):
+    def get_sites(self,
+                  siteid=None,
+                  siteurl=None,
+                  rss=False,
+                  brush=False,
+                  signin=False,
+                  statistic=False):
         """
         获取站点配置
         """
@@ -47,8 +52,11 @@ class Sites:
             rule_groupid = str(site[9]).split("|")[1] if site[9] and len(str(site[9]).split("|")) > 1 else ""
             # 站点未读消息为|分隔的第3位
             site_unread_msg_notify = str(site[9]).split("|")[2] if site[9] and len(str(site[9]).split("|")) > 2 else "Y"
-            # 是否自动签到为|分隔的第4位
-            auto_signin = str(site[9]).split("|")[3] if site[9] and len(str(site[9]).split("|")) > 3 else "Y"
+            # 站点用途：Q签到、D订阅、S刷流
+            signin_enable = True if not site[6] or str(site[6]).count("Q") else False
+            rss_enable = True if not site[6] or str(site[6]).count("D") else False
+            brush_enable = True if not site[6] or str(site[6]).count("S") else False
+            statistic_enable = True if not site[6] or str(site[6]).count("T") else False
             if rule_groupid:
                 rule_name = self.filtersites.get_rule_groups(rule_groupid).get("name") or ""
             else:
@@ -64,14 +72,23 @@ class Sites:
                 "rule_name": rule_name,
                 "parse": site_parse,
                 "unread_msg_notify": site_unread_msg_notify,
-                "auto_signin": auto_signin
+                "signin_enable": signin_enable,
+                "rss_enable": rss_enable,
+                "brush_enable": brush_enable,
+                "statistic_enable": statistic_enable
             }
             if siteid and int(site[0]) == int(siteid):
                 return site_info
             url = site[3] if not site[4] else site[4]
             if siteurl and url and StringUtils.url_equal(siteurl, url):
                 return site_info
-            if rss and not site[3]:
+            if rss and (not site[3] or not rss_enable):
+                continue
+            if brush and (not site[3] or not brush_enable):
+                continue
+            if signin and (not site[4] or not signin_enable):
+                continue
+            if statistic and not statistic_enable:
                 continue
             ret_sites.append(site_info)
         if siteid or siteurl:
@@ -90,11 +107,11 @@ class Sites:
         with lock:
             # 没有指定站点，默认使用全部站点
             if not specify_sites:
-                refresh_sites = self.get_sites()
+                refresh_sites = self.get_sites(statistic=True)
             else:
-                refresh_sites = [site for site in self.get_sites() if site.get("name") in specify_sites]
+                refresh_sites = [site for site in self.get_sites(statistic=True) if site.get("name") in specify_sites]
 
-            refresh_all = len(self.get_sites()) == len(refresh_sites)
+            refresh_all = len(self.get_sites(statistic=True)) == len(refresh_sites)
 
             with ThreadPool(min(len(refresh_sites), self._MAX_CONCURRENCY)) as p:
                 site_user_infos = p.map(self.__refresh_pt_data, refresh_sites)
@@ -174,16 +191,13 @@ class Sites:
         站点签到入口，由定时服务调用
         """
         status = []
-        for site_info in self.get_sites():
+        for site_info in self.get_sites(signin=True):
             if not site_info:
                 continue
             site = site_info.get("name")
             try:
                 site_url = site_info.get("signurl")
                 site_cookie = site_info.get("cookie")
-                auto_sign = not(site_info.get("auto_signin") == "N")
-                if not auto_sign:
-                    continue
                 log.info("【PT】开始站点签到：%s" % site)
                 if not site_url or not site_cookie:
                     log.warn("【PT】未配置 %s 的站点地址或Cookie，无法签到" % str(site))
@@ -201,7 +215,7 @@ class Sites:
             except Exception as e:
                 log.error("【PT】%s 签到出错：%s - %s" % (site, str(e), traceback.format_exc()))
         if status:
-            self.message.sendmsg(title="站点签到", text="\n".join(status))
+            self.message.send_site_signin_message(status)
 
     @staticmethod
     def __is_signin_success(html_text):
