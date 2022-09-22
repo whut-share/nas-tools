@@ -6,6 +6,7 @@ import re
 import shutil
 import traceback
 from enum import Enum
+from subprocess import call
 from threading import Lock
 from time import sleep
 
@@ -146,48 +147,50 @@ class FileTransfer:
             lock.acquire()
             if self.__system == OsType.WINDOWS:
                 if rmt_mode == RmtMode.LINK:
-                    retcode = os.system('mklink /H "%s" "%s"' % (target_file, file_item))
+                    retcode = os.system('mklink /H "{}" "{}"'.format(target_file, file_item))
                 elif rmt_mode == RmtMode.SOFTLINK:
-                    retcode = os.system('mklink "%s" "%s"' % (target_file, file_item))
+                    retcode = os.system('mklink "{}" "{}"'.format(target_file, file_item))
                 elif rmt_mode == RmtMode.MOVE:
-                    retcode = os.system('rename "%s" "%s"' % (file_item, os.path.basename(target_file)))
+                    retcode = os.system('rename "{}" "{}"'.format(file_item, os.path.basename(target_file)))
                     if retcode != 0:
                         return retcode
-                    retcode = os.system('move /Y "%s" "%s"' % (
+                    retcode = os.system('move /Y "{}" "{}"'.format(
                         os.path.join(os.path.dirname(file_item), os.path.basename(target_file)), target_file))
+                    log.info("移动状态: {}".format(retcode))
                 elif rmt_mode == RmtMode.RCLONE or rmt_mode == RmtMode.RCLONECOPY:
                     if target_file.startswith("/") or target_file.startswith("\\"):
                         target_file = target_file[1:]
                     if rmt_mode == RmtMode.RCLONE:
-                        retcode = os.system('rclone.exe moveto "%s" NASTOOL:"%s"' % (file_item, target_file))
+                        retcode = os.system('rclone.exe moveto "{}" NASTOOL:"{}"'.format(file_item, target_file))
                     else:
-                        retcode = os.system('rclone.exe copyto "%s" NASTOOL:"%s"' % (file_item, target_file))
+                        retcode = os.system('rclone.exe copyto "{}" NASTOOL:"{}"'.format(file_item, target_file))
                 else:
-                    retcode = os.system('copy /Y "%s" "%s"' % (file_item, target_file))
+                    retcode = os.system('copy /Y "{}" "{}"'.format(file_item, target_file))
             else:
                 if rmt_mode == RmtMode.LINK:
                     if platform.release().find("-z4-") >= 0:
                         tmp = "%s/%s" % (PathUtils.get_parent_paths(target_file, 2), os.path.basename(target_file))
-                        retcode = os.system('ln "%s" "%s" ; mv "%s" "%s"' % (file_item, tmp, tmp, target_file))
+                        retcode = call(["ln", file_item, tmp])
+                        if retcode == 0:
+                            retcode = call(["mv", tmp, target_file])
                     else:
-                        retcode = os.system('ln "%s" "%s"' % (file_item, target_file))
+                        retcode = call(["ln", file_item, target_file])
                 elif rmt_mode == RmtMode.SOFTLINK:
-                    retcode = os.system('ln -s "%s" "%s"' % (file_item, target_file))
+                    retcode = call(["ln", "-s", file_item, target_file])
                 elif rmt_mode == RmtMode.MOVE:
                     tmp_file = os.path.join(os.path.dirname(file_item), os.path.basename(target_file))
-                    retcode = os.system('mv "%s" "%s"' % (file_item, tmp_file))
-                    if retcode != 0:
-                        return retcode
-                    retcode = os.system('mv "%s" "%s"' % (tmp_file, target_file))
+                    retcode = call(["mv", file_item, tmp_file])
+                    if retcode == 0:
+                        retcode = call(["mv", tmp_file, target_file])
                 elif rmt_mode == RmtMode.RCLONE or rmt_mode == RmtMode.RCLONECOPY:
                     if target_file.startswith("/") or target_file.startswith("\\"):
                         target_file = target_file[1:]
                     if rmt_mode == RmtMode.RCLONE:
-                        retcode = os.system('rclone moveto "%s" NASTOOL:"%s"' % (file_item, target_file))
+                        retcode = call(["rclone", "moveto", file_item, "NASTOOL:" + target_file])
                     else:
-                        retcode = os.system('rclone copyto "%s" NASTOOL:"%s"' % (file_item, target_file))
+                        retcode = call(["rclone", "copyto", file_item, "NASTOOL:" + target_file])
                 else:
-                    retcode = os.system('cp "%s" "%s"' % (file_item, target_file))
+                    retcode = call(["cp", file_item, target_file])
         finally:
             lock.release()
         return retcode
@@ -725,7 +728,7 @@ class FileTransfer:
                     and os.path.exists(in_path) \
                     and os.path.isdir(in_path) \
                     and not PathUtils.get_dir_files(in_path=in_path, exts=RMT_MEDIAEXT) \
-                    and not PathUtils.get_dir_files(in_path=in_path, exts=['.!qB', '.part']):
+                    and not PathUtils.get_dir_files(in_path=in_path, exts=['.!qb', '.part']):
                 log.info("【RMT】目录下已无媒体文件及正在下载的文件，移动模式下删除目录：%s" % in_path)
                 shutil.rmtree(in_path)
         return success_flag, error_message
@@ -870,7 +873,7 @@ class FileTransfer:
             if os.path.exists(new_path):
                 log.info("【RMT】目录 %s 已存在" % new_path)
                 return False
-            ret = os.system('mv "%s" "%s"' % (org_path, new_path))
+            ret = os.system("mv '%s' '%s'" % (org_path, new_path))
             if ret == 0:
                 return True
         else:

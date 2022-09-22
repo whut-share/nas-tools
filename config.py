@@ -9,12 +9,11 @@ from werkzeug.security import generate_password_hash
 # 菜单对应关系，配置WeChat应用中配置的菜单ID与执行命令的对应关系，需要手工修改
 # 菜单序号在https://work.weixin.qq.com/wework_admin/frame#apps 应用自定义菜单中维护，然后看日志输出的菜单序号是啥（按顺利能猜到的）....
 # 命令对应关系：/ptt 下载文件转移；/ptr 删种；/pts 站点签到；/rst 目录同步；/rss RSS下载
+WECHAT_MENU = {'_0_1': '/ptt', '_0_2': '/ptr', '_0_3': '/rss', '_0_4': '/rst', '_1_0': '/db', '_2_0': '/pts'}
 # 种子名/文件名要素分隔字符
 SPLIT_CHARS = r"\.|\s+|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|（|）"
-from app.utils.string_utils import StringUtils
-
-WECHAT_MENU = {'_0_1': '/ptt', '_0_2': '/ptr', '_0_3': '/rss', '_0_4': '/rst', '_1_0': '/db', '_2_0': '/pts'}
-
+# 默认User-Agent
+DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36"
 # 收藏了的媒体的目录名，名字可以改，在Emby中点击红星则会自动将电影转移到此分类下，需要在Emby Webhook中配置用户行为通知
 RMT_FAVTYPE = '精选'
 # 支持的媒体文件后缀格式

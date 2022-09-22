@@ -335,33 +335,37 @@ class WebAction:
         results = SqlHelper.get_search_result_by_id(dl_id)
         for res in results:
             if res[11] and str(res[11]) != "0":
-                msg_item = MetaInfo("%s" % res[8])
+                media = MetaInfo("%s" % res[8])
                 if res[7] == "TV":
                     mtype = MediaType.TV
                 elif res[7] == "MOV":
                     mtype = MediaType.MOVIE
                 else:
                     mtype = MediaType.ANIME
-                msg_item.type = mtype
-                msg_item.tmdb_id = res[11]
-                msg_item.title = res[1]
-                msg_item.vote_average = res[5]
-                msg_item.poster_path = res[6]
-                msg_item.poster_path = res[12]
-                msg_item.overview = res[13]
+                media.type = mtype
+                media.tmdb_id = res[11]
+                media.title = res[1]
+                media.vote_average = res[5]
+                media.poster_path = res[6]
+                media.poster_path = res[12]
+                media.overview = res[13]
             else:
-                msg_item = Media().get_media_info(title=res[8], subtitle=res[9])
-            msg_item.enclosure = res[0]
-            msg_item.description = res[9]
-            msg_item.size = res[10]
-            msg_item.site = res[14]
-            msg_item.upload_volume_factor = float(res[15])
-            msg_item.download_volume_factor = float(res[16])
+                media = Media().get_media_info(title=res[8], subtitle=res[9])
+            media.enclosure = res[0]
+            media.description = res[9]
+            media.size = res[10]
+            media.site = res[14]
+            media.upload_volume_factor = float(res[15])
+            media.download_volume_factor = float(res[16])
+            media.page_url = res[17]
             # 添加下载
-            ret, ret_msg = Downloader().add_pt_torrent(url=res[0], mtype=msg_item.type, download_dir=dl_dir)
+            ret, ret_msg = Downloader().add_pt_torrent(url=media.enclosure,
+                                                       mtype=media.type,
+                                                       download_dir=dl_dir,
+                                                       page_url=media.page_url)
             if ret:
                 # 发送消息
-                Message().send_download_message(SearchType.WEB, msg_item)
+                Message().send_download_message(SearchType.WEB, media)
             else:
                 return {"retcode": -1, "retmsg": ret_msg}
         return {"retcode": 0, "retmsg": ""}
@@ -684,6 +688,16 @@ class WebAction:
         """
         维护站点信息
         """
+
+        def __is_site_duplicate(query_name, query_tid):
+            # 检查是否重名
+            _sites = SqlHelper.get_site_by_name(name=query_name)
+            for site in _sites:
+                site_id = site[0]
+                if str(site_id) != str(query_tid):
+                    return True
+            return False
+
         tid = data.get('site_id')
         name = data.get('site_name')
         site_pri = data.get('site_pri')
@@ -692,7 +706,18 @@ class WebAction:
         cookie = data.get('site_cookie')
         note = data.get('site_note')
         rss_uses = data.get('site_include')
+
+        if __is_site_duplicate(name, tid):
+            return {"code": 400, "msg": "站点名称重复"}
+
         if tid:
+            sites = SqlHelper.get_site_by_id(tid)
+            # 站点不存在
+            if not sites:
+                return {"code": 400, "msg": "站点不存在"}
+
+            old_name = sites[0][1]
+
             ret = SqlHelper.update_config_site(tid=tid,
                                                name=name,
                                                site_pri=site_pri,
@@ -701,6 +726,12 @@ class WebAction:
                                                cookie=cookie,
                                                note=note,
                                                rss_uses=rss_uses)
+            if ret and (name != old_name):
+                # 更新历史站点数据信息
+                SqlHelper.update_site_user_statistics_site_name(name, old_name)
+                SqlHelper.update_site_seed_info_site_name(name, old_name)
+                SqlHelper.update_site_statistics_site_name(name, old_name)
+
         else:
             ret = SqlHelper.insert_config_site(name=name,
                                                site_pri=site_pri,
@@ -1556,6 +1587,18 @@ class WebAction:
         if not name:
             return {"code": -1}
         media_info = Media().get_media_info(title=name)
+        tmdb_id = media_info.tmdb_id
+        tmdb_link = ""
+        tmdb_S_E_link = ""
+        if tmdb_id:
+            if media_info.type == MediaType.MOVIE:
+                tmdb_link = "https://www.themoviedb.org/movie/" + str(tmdb_id)
+            else:
+                tmdb_link = "https://www.themoviedb.org/tv/" + str(tmdb_id)
+                if media_info.get_season_string():
+                    tmdb_S_E_link = "%s/season/%s" % (tmdb_link, media_info.get_season_seq())
+                    if media_info.get_episode_string():
+                        tmdb_S_E_link = "%s/episode/%s" % (tmdb_S_E_link, media_info.get_episode_seq())
         if not media_info:
             return {"code": 0, "data": {"name": "无法识别"}}
         return {"code": 0, "data": {
@@ -1565,7 +1608,9 @@ class WebAction:
             "year": media_info.year,
             "season_episode": media_info.get_season_episode_string(),
             "part": media_info.part,
-            "tmdbid": media_info.tmdb_id,
+            "tmdbid": tmdb_id,
+            "tmdblink": tmdb_link,
+            "tmdb_S_E_link": tmdb_S_E_link,
             "category": media_info.category,
             "restype": media_info.resource_type,
             "pix": media_info.resource_pix,
