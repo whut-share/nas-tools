@@ -9,20 +9,20 @@
       <div class="col-auto ms-auto d-print-none">
         <div class="btn-list">
           <a href="javascript:show_rename_udf_modal()" class="btn btn-primary d-none d-sm-inline-block">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24"
-              stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-a-b" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+               <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+               <path d="M3 16v-5.5a2.5 2.5 0 0 1 5 0v5.5m0 -4h-5"></path>
+               <line x1="12" y1="6" x2="12" y2="18"></line>
+               <path d="M16 16v-8h3a2 2 0 0 1 0 4h-3m3 0a2 2 0 0 1 0 4h-3"></path>
             </svg>
             自定义识别
           </a>
           <a href="javascript:show_rename_udf_modal()" class="btn btn-primary d-sm-none btn-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24"
-              stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-a-b" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+               <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+               <path d="M3 16v-5.5a2.5 2.5 0 0 1 5 0v5.5m0 -4h-5"></path>
+               <line x1="12" y1="6" x2="12" y2="18"></line>
+               <path d="M16 16v-8h3a2 2 0 0 1 0 4h-3m3 0a2 2 0 0 1 0 4h-3"></path>
             </svg>
           </a>
         </div>
@@ -43,6 +43,13 @@
               </div>
             </div>
             <div class="card-actions btn-actions">
+              <a href="javascript:reidentification_all()" class="btn-action" title="批量重新识别">
+              <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                 <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                 <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
+                 <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
+              </svg>
+            </a>
               <a href="javascript:delete_checked_unknown()" class="btn-action" title="删除选中">
                 <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24"
                   stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -60,8 +67,10 @@
             <table class="table table-vcenter card-table">
               <thead>
                 <tr>
+                  {% if TotalCount > 0 %}
                   <th class="w-1"><input class="form-check-input m-0 align-middle" id="unknown_check_all_btn"
                       type="checkbox" aria-label="全选"></th>
+                  {% endif %}
                   <th>文件名</th>
                   <th class="w-5"></th>
                 </tr>
@@ -92,7 +101,7 @@
                         </svg>
                       </a>
                       <div class="dropdown-menu dropdown-menu-end">
-                        <a class="dropdown-item" href='javascript:re_identification("{{ Path.id }}")'>
+                        <a class="dropdown-item" href='javascript:re_identification(["{{ Path.id }}"])'>
                           重新识别
                         </a>
                         <a class="dropdown-item"
@@ -143,12 +152,14 @@
               <div class="mb-3">
                 <label class="form-label">同步方式</label>
                 <select  id="rename_syncmod_manual" class="form-select">
-                  <option value="link" selected = "selected">硬链接</option>
-                  <option value="softlink">软链接</option>
-                  <option value="copy">复制</option>
-                  <option value="move">移动</option>
-                  <option value="rclonecopy">Rclone复制</option>
-                  <option value="rclone">Rclone移动</option>
+                  <option value="link" {% if SyncMod == "link" %} selected = "selected"{% endif %}>硬链接</option>
+                  <option value="softlink" {% if SyncMod == "softlink" %} selected = "selected"{% endif %}>软链接</option>
+                  <option value="copy" {% if SyncMod == "copy" %} selected = "selected"{% endif %}>复制</option>
+                  <option value="move" {% if SyncMod == "move" %} selected = "selected"{% endif %}>移动</option>
+                  <option value="rclonecopy" {% if SyncMod == "rclonecopy" %} selected = "selected"{% endif %}>Rclone复制</option>
+                  <option value="rclone" {% if SyncMod == "rclone" %} selected = "selected"{% endif %}>Rclone移动</option>
+                  <option value="miniocopy" {% if SyncMod == "miniocopy" %} selected = "selected"{% endif %}>Minio复制</option>
+                  <option value="minio" {% if SyncMod == "minio" %} selected = "selected"{% endif %}>Minio移动</option>
                 </select> 
               </div>
             </div>
@@ -169,12 +180,14 @@
               <div class="mb-3">
                 <label class="form-label">同步方式</label>
                 <select  id="rename_syncmod_customize" class="form-select">
-                  <option value="link" selected = "selected">硬链接</option>
-                  <option value="softlink">软链接</option>
-                  <option value="copy">复制</option>
-                  <option value="move">移动</option>
-                  <option value="rclonecopy">Rclone复制</option>
-                  <option value="rclone">Rclone移动</option>
+                  <option value="link" {% if SyncMod == "link" %} selected = "selected"{% endif %}>硬链接</option>
+                  <option value="softlink" {% if SyncMod == "softlink" %} selected = "selected"{% endif %}>软链接</option>
+                  <option value="copy" {% if SyncMod == "copy" %} selected = "selected"{% endif %}>复制</option>
+                  <option value="move" {% if SyncMod == "move" %} selected = "selected"{% endif %}>移动</option>
+                  <option value="rclonecopy" {% if SyncMod == "rclonecopy" %} selected = "selected"{% endif %}>Rclone复制</option>
+                  <option value="rclone" {% if SyncMod == "rclone" %} selected = "selected"{% endif %}>Rclone移动</option>
+                  <option value="miniocopy" {% if SyncMod == "miniocopy" %} selected = "selected"{% endif %}>Minio复制</option>
+                  <option value="minio" {% if SyncMod == "minio" %} selected = "selected"{% endif %}>Minio移动</option>
                 </select> 
               </div>
             </div>
@@ -182,6 +195,7 @@
           <label class="form-label">类型</label>
           <div class="form-selectgroup-boxes row mb-3">
             <div class="col-lg-4">
+              <div class="mb-1">
               <label class="form-selectgroup-item">
                 <input type="radio" name="rename_type" value="MOV" class="form-selectgroup-input" checked>
                 <span class="form-selectgroup-label d-flex align-items-center p-3">
@@ -193,8 +207,10 @@
                   </span>
                 </span>
               </label>
+              </div>
             </div>
             <div class="col-lg-4">
+              <div class="mb-1">
               <label class="form-selectgroup-item">
                 <input type="radio" name="rename_type" value="TV" class="form-selectgroup-input">
                 <span class="form-selectgroup-label d-flex align-items-center p-3">
@@ -206,8 +222,10 @@
                   </span>
                 </span>
               </label>
+              </div>
             </div>
             <div class="col-lg-4">
+              <div class="mb-1">
               <label class="form-selectgroup-item">
                 <input type="radio" name="rename_type" value="ANIME" class="form-selectgroup-input">
                 <span class="form-selectgroup-label d-flex align-items-center p-3">
@@ -219,6 +237,7 @@
                   </span>
                 </span>
               </label>
+              </div>
             </div>
           </div>
         </div>
@@ -531,9 +550,9 @@
   });
 
   //重新识别
-  function re_identification(unknown_id) {
+  function re_identification(unknown_ids) {
     var cmd = "re_identification";
-    var data = { "unknown_id": unknown_id };
+    var data = { "flag": "unknow", "ids": unknown_ids };
     show_wait_process();
     ajax_post(cmd, data, function (ret) {
       hide_wait_process();
@@ -549,20 +568,26 @@
   function delete_checked_unknown() {
     var ids = [];
     var i = 0;
-    $("input[type=checkbox]").each(function () {
+    $(".table-responsive input[type=checkbox]").each(function () {
       if ($(this).prop("checked")) {
-        ids[i] = $(this).attr("id").replace("check_", "");
-        i = i + 1;
+        checkid = $(this).attr("id");
+        if (checkid && checkid.startsWith("check_")) {
+          ids[i] = checkid.replace("check_", "");
+          i = i + 1;
+        }
       }
     });
     if (i == 0) {
       return;
     }
-    var cmd = "del_unknown_path";
-    var data = { "id": ids };
-    ajax_post(cmd, data, function (ret) {
-      navmenu('unidentification');
-    });
+    show_confirm_modal("是否确认删除所有选中的未识别记录？", function(){
+      hide_confirm_modal();
+      var cmd = "del_unknown_path";
+      var data = { "id": ids };
+      ajax_post(cmd, data, function (ret) {
+        navmenu('unidentification');
+      });
+    })
   }
 
   //单选框事件
@@ -580,8 +605,28 @@
     }
   });
 
+  //批量重新识别
+  function reidentification_all(){
+    var i = 0;
+    var ids = []
+    $(".table-responsive input[type=checkbox]").each(function () {
+      if ($(this).prop("checked")) {
+        checkid = $(this).attr("id");
+        debugger;
+        if (checkid && checkid.startsWith("check_")) {
+          id = checkid.replace("check_", "");
+          ids[i] = id;
+          i = i + 1;
+        }
+      }
+    });
+    if (i > 0){
+      re_identification(ids);
+    }
+  }
+
   //全选事件
   $("#unknown_check_all_btn").change(function () {
-    $("input[type=checkbox]").prop("checked", $(this).prop("checked"));
+    $(".table-responsive input[type=checkbox]").prop("checked", $(this).prop("checked"));
   });
 </script>

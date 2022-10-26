@@ -1,10 +1,12 @@
+from app.utils.types import IndexerType
 from config import Config
 from app.indexer.indexer import IIndexer
-from app.utils import RequestUtils, IndexerConf
+from app.utils import RequestUtils
+from app.helper import IndexerConf
 
 
 class Prowlarr(IIndexer):
-    index_type = "PROWLARR"
+    index_type = IndexerType.PROWLARR.value
 
     def init_config(self):
         config = Config()
@@ -12,10 +14,11 @@ class Prowlarr(IIndexer):
         if prowlarr:
             self.api_key = prowlarr.get('api_key')
             self.host = prowlarr.get('host')
-            if not self.host.startswith('http://') and not self.host.startswith('https://'):
-                self.host = "http://" + self.host
-            if not self.host.endswith('/'):
-                self.host = self.host + "/"
+            if self.host:
+                if not self.host.startswith('http'):
+                    self.host = "http://" + self.host
+                if not self.host.endswith('/'):
+                    self.host = self.host + "/"
 
     def get_status(self):
         """
@@ -42,7 +45,8 @@ class Prowlarr(IIndexer):
         indexers = ret.json().get("indexers", [])
         return [IndexerConf({"id": v["indexerId"],
                              "name": v["indexerName"],
-                             "domain": f'{self.host}{v["indexerId"]}/api'})
+                             "domain": f'{self.host}{v["indexerId"]}/api',
+                             "buildin": False})
                 for v in indexers]
 
     def search(self, *kwargs):

@@ -14,6 +14,7 @@ class MetaAnime(MetaBase):
     识别动漫
     """
     _anime_no_words = ['CHS&CHT', 'MP4', 'GB MP4', 'WEB-DL']
+    _name_nostring_re = r"S\d{2}\s*-\s*S\d{2}|S\d{2}|\s+S\d{1,2}|EP?\d{2,4}\s*-\s*EP?\d{2,4}|EP?\d{2,4}|\s+EP?\d{1,4}"
 
     def __init__(self, title, subtitle=None, fileflag=False):
         super().__init__(title, subtitle, fileflag)
@@ -60,9 +61,10 @@ class MetaAnime(MetaBase):
                 if self.cn_name:
                     _, self.cn_name, _, _, _, _ = StringUtils.get_keyword_from_string(self.cn_name)
                     if self.cn_name:
+                        self.cn_name = re.sub(r'%s' % self._name_nostring_re, '', self.cn_name, flags=re.IGNORECASE).strip()
                         self.cn_name = zhconv.convert(self.cn_name, "zh-hans")
                 if self.en_name:
-                    self.en_name = self.en_name.strip()
+                    self.en_name = re.sub(r'%s' % self._name_nostring_re, '', self.en_name, flags=re.IGNORECASE).strip()
                 # 年份
                 year = anitopy_info.get("anime_year")
                 if str(year).isdigit():
@@ -86,6 +88,9 @@ class MetaAnime(MetaBase):
                     self.begin_season = int(begin_season)
                     if end_season and end_season != self.begin_season:
                         self.end_season = int(end_season)
+                        self.total_seasons = (self.end_season - self.begin_season) + 1
+                    else:
+                        self.total_seasons = 1
                     self.type = MediaType.TV
                 # 集号
                 episode_number = anitopy_info.get("episode_number")
@@ -106,6 +111,9 @@ class MetaAnime(MetaBase):
                     self.begin_episode = int(begin_episode)
                     if end_episode and end_episode != self.begin_episode:
                         self.end_episode = int(end_episode)
+                        self.total_episodes = (self.end_episode - self.begin_episode) + 1
+                    else:
+                        self.total_episodes = 1
                     self.type = MediaType.TV
                 # 类型
                 if not self.type:
@@ -169,6 +177,8 @@ class MetaAnime(MetaBase):
         title = re.sub(r'[0-9.]+\s*[MGT]i?B(?![A-Z]+)', "", title, flags=re.IGNORECASE)
         # 将TVxx改为xx
         title = re.sub(r"\[TV\s+(\d{1,4})", r"[\1", title, flags=re.IGNORECASE)
+        # 将4K转为2160p
+        title = re.sub(r'\[4k]', '2160p', title, flags=re.IGNORECASE)
         # 处理/分隔的中英文标题
         names = title.split("]")
         if len(names) > 1 and title.find("- ") == -1:

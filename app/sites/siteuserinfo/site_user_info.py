@@ -8,6 +8,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 from lxml import etree
 
+import log
 from app.utils import RequestUtils
 
 
@@ -24,7 +25,9 @@ class ISiteUserInfo(metaclass=ABCMeta):
         # 用户信息
         self.username = None
         self.userid = None
+        # 未读消息
         self.message_unread = 0
+        self.message_unread_contents = []
 
         # 流量信息
         self.upload = 0
@@ -62,7 +65,10 @@ class ISiteUserInfo(metaclass=ABCMeta):
         self._user_detail_page = "userdetails.php?id="
         self._user_traffic_page = "index.php"
         self._torrent_seeding_page = "getusertorrentlistajax.php?userid="
+        self._user_mail_unread_page = "messages.php?action=viewmailbox&box=1&unread=yes"
+        self._sys_mail_unread_page = "messages.php?action=viewmailbox&box=-2&unread=yes"
         self._torrent_seeding_params = None
+        self._torrent_seeding_headers = None
 
         split_url = urlsplit(url)
         self.site_name = site_name
@@ -90,11 +96,44 @@ class ISiteUserInfo(metaclass=ABCMeta):
         self._parse_favicon(self._index_html)
         self._parse_site_page(self._index_html)
         self._parse_user_base_info(self._index_html)
+        self._pase_unread_msgs()
         if self._user_traffic_page:
             self._parse_user_traffic_info(self._get_page_content(urljoin(self._base_url, self._user_traffic_page)))
         if self._user_detail_page:
             self._parse_user_detail_info(self._get_page_content(urljoin(self._base_url, self._user_detail_page)))
 
+        self._parse_seeding_pages()
+        self.seeding_info = json.dumps(self.seeding_info)
+
+    def _pase_unread_msgs(self):
+        """
+        解析所有未读消息标题和内容
+        :return:
+        """
+        unread_msg_links = []
+        if self.message_unread > 0:
+            links = {self._user_mail_unread_page, self._sys_mail_unread_page}
+            for link in links:
+                if not link:
+                    continue
+
+                msg_links = []
+                next_page = self._parse_message_unread_links(
+                    self._get_page_content(urljoin(self._base_url, link)), msg_links)
+                while next_page:
+                    next_page = self._parse_message_unread_links(
+                        self._get_page_content(urljoin(self._base_url, next_page)), msg_links)
+
+                unread_msg_links.extend(msg_links)
+
+        for msg_link in unread_msg_links:
+            print(msg_link)
+            log.debug(f"【Sites】{self.site_name} 信息链接 {msg_link}")
+            head, date, content = self._parse_message_content(self._get_page_content(urljoin(self._base_url, msg_link)))
+            log.debug(f"【Sites】{self.site_name} 标题 {head} 时间 {date} 内容 {content}")
+            self.message_unread_contents.append((head, date, content))
+
+    def _parse_seeding_pages(self):
         seeding_pages = []
         if self._torrent_seeding_page:
             if isinstance(self._torrent_seeding_page, list):
@@ -105,16 +144,17 @@ class ISiteUserInfo(metaclass=ABCMeta):
             for seeding_page in seeding_pages:
                 # 第一页
                 next_page = self._parse_user_torrent_seeding_info(
-                    self._get_page_content(urljoin(self._base_url, seeding_page), self._torrent_seeding_params))
+                    self._get_page_content(urljoin(self._base_url, seeding_page),
+                                           self._torrent_seeding_params,
+                                           self._torrent_seeding_headers))
 
                 # 其他页处理
                 while next_page:
                     next_page = self._parse_user_torrent_seeding_info(
                         self._get_page_content(urljoin(urljoin(self._base_url, seeding_page), next_page),
-                                               self._torrent_seeding_params),
+                                               self._torrent_seeding_params,
+                                               self._torrent_seeding_headers),
                         multi_page=True)
-
-        self.seeding_info = json.dumps(self.seeding_info)
 
     @staticmethod
     def _prepare_html_text(html_text):
@@ -122,6 +162,15 @@ class ISiteUserInfo(metaclass=ABCMeta):
         处理掉HTML中的干扰部分
         """
         return re.sub(r"#\d+", "", re.sub(r"\d+px", "", html_text))
+
+    @abstractmethod
+    def _parse_message_unread_links(self, html_text, msg_links):
+        """
+        获取未阅读消息链接
+        :param html_text:
+        :return:
+        """
+        pass
 
     def _parse_favicon(self, html_text):
         """
@@ -131,7 +180,7 @@ class ISiteUserInfo(metaclass=ABCMeta):
         """
         html = etree.HTML(html_text)
         if html:
-            fav_link = html.xpath('//head/link[@rel = "shortcut icon"]/@href')
+            fav_link = html.xpath('//head/link[contains(@rel, "icon")]/@href')
             if fav_link:
                 self._favicon_url = urljoin(self._base_url, fav_link[0])
 
@@ -140,19 +189,36 @@ class ISiteUserInfo(metaclass=ABCMeta):
         if res:
             self.site_favicon = base64.b64encode(res.content).decode()
 
-    def _get_page_content(self, url, params=None):
+    def _get_page_content(self, url, params=None, headers=None):
         """
         :param url: 网页地址
         :param params: post参数
+        :param headers: 额外的请求头
         :return:
         """
+        req_headers = None
+        if self._ua or headers:
+            req_headers = {}
+            if headers:
+                req_headers.update(headers)
+
+            if isinstance(self._ua, str):
+                req_headers.update({
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "User-Agent": f"{self._ua}"
+                })
+            else:
+                req_headers.update(self._ua)
+
         if params:
-            res = RequestUtils(cookies=self._site_cookie, session=self._session, timeout=60, headers=self._ua).post_res(
+            res = RequestUtils(cookies=self._site_cookie, session=self._session, timeout=60,
+                               headers=req_headers).post_res(
                 url=url, params=params)
         else:
-            res = RequestUtils(cookies=self._site_cookie, session=self._session, timeout=60, headers=self._ua).get_res(
+            res = RequestUtils(cookies=self._site_cookie, session=self._session, timeout=60,
+                               headers=req_headers).get_res(
                 url=url)
-        if res and res.status_code == 200:
+        if res is not None and res.status_code in (200, 500):
             if "charset=utf-8" in res.text or "charset=UTF-8" in res.text:
                 res.encoding = "UTF-8"
             else:
@@ -205,5 +271,14 @@ class ISiteUserInfo(metaclass=ABCMeta):
         加入时间/等级/魔力值等
         :param html_text:
         :return:
+        """
+        pass
+
+    @abstractmethod
+    def _parse_message_content(self, html_text):
+        """
+        解析短消息内容
+        :param html_text:
+        :return:  head: message, date: time, content: message content
         """
         pass

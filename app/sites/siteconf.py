@@ -1,15 +1,4 @@
-from app.utils import StringUtils
-
-
 class SiteConf:
-    # 非常规RSS站点
-    RSS_EXTRA_SITES = {
-        'blutopia.xyz': 'Unit3D',
-        'desitorrents.tv': 'Unit3D',
-        'jptv.club': 'Unit3D',
-        'www.torrentseeds.org': 'Unit3D',
-        'beyond-hd.me': 'beyondhd',
-    }
     # 检测种子促销的站点XPATH，不在此清单的无法开启仅RSS免费种子功能
     RSS_SITE_GRAP_CONF = {
         'pthome.net': {
@@ -201,7 +190,7 @@ class SiteConf:
         'chdbits.co': {
             'FREE': ["//img[@class='pro_free']"],
             '2XFREE': [],
-            'HR': ["//b[text()='H&amp;R:&nbsp;']"],
+            'HR': ["//b[contains(text(),'H&R:')]"],
             'PEER_COUNT': [],
         },
         'hdchina.org': {
@@ -312,70 +301,122 @@ class SiteConf:
             'HR': [],
             'PEER_COUNT': [],
         },
+        'www.hddolby.com': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'piggo.me': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': ["//img[@class='hitandrun']"],
+            'PEER_COUNT': [],
+        },
+        'pt.0ff.cc': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': ["//img[@class='hitandrun']"],
+            'PEER_COUNT': [],
+        },
+        'wintersakura.net': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'pt.hdupt.com': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'pt.upxin.net': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'www.nicept.net': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'ptchina.org': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'www.hd.ai': {
+            'FREE': ["//img[@class='pro_free']"],
+            '2XFREE': [],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'hhanclub.top': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': [],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
     }
     # 公共BT站点
     PUBLIC_TORRENT_SITES = {
         'rarbg.to': {
             "parser": "rarbg",
-            "proxy": True
+            "proxy": True,
+            "language": "en"
         },
         'dmhy.org': {
             "proxy": True
         },
         'eztv.re': {
-            "proxy": True
+            "proxy": True,
+            "language": "en"
         },
         'acg.rip': {
             "proxy": False
         },
         'thepiratebay.org': {
             "proxy": True,
-            "render": True
+            "render": True,
+            "language": "en"
         },
         'nyaa.si': {
-            "proxy": True
+            "proxy": True,
+            "language": "en"
         },
         '1337x.to': {
-            "proxy": True
+            "proxy": True,
+            "language": "en"
         },
         'ext.to': {
+            "proxy": True,
+            "language": "en"
+        },
+        'torrentgalaxy.to': {
+            "proxy": True,
+            "language": "en"
+        },
+        'mikanani.me': {
+            "proxy": False
+        },
+        'gaoqing.fm': {
+            "proxy": False
+        },
+        'www.mp4ba.vip': {
+            "proxy": False
+        },
+        'www.miobt.com': {
+            "proxy": True
+        },
+        'katcr.to': {
+            "proxy": True,
+            "language": "en"
+        },
+        'btsow.quest': {
             "proxy": True
         }
     }
-
-    def get_extrasite_conf(self, url):
-        """
-        根据地址找到RSS_EXTRA_SITES对应配置
-        """
-        for k, v in self.RSS_EXTRA_SITES.items():
-            if StringUtils.url_equal(k, url):
-                return v
-        return None
-
-    def get_grapsite_conf(self, url):
-        """
-        根据地址找到RSS_SITE_GRAP_CONF对应配置
-        """
-        for k, v in self.RSS_SITE_GRAP_CONF.items():
-            if StringUtils.url_equal(k, url):
-                return v
-        return {}
-
-    def is_public_site(self, url):
-        """
-        判断是否为公开BT站点
-        """
-        _, netloc = StringUtils.get_url_netloc(url)
-        if netloc in self.PUBLIC_TORRENT_SITES.keys():
-            return True
-        return False
-
-    def get_public_sites(self, url=None):
-        """
-        查询所有公开BT站点
-        """
-        if url:
-            _, netloc = StringUtils.get_url_netloc(url)
-            return self.PUBLIC_TORRENT_SITES.get(netloc)
-        else:
-            return self.PUBLIC_TORRENT_SITES.items()

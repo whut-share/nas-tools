@@ -7,17 +7,17 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from lxml import etree
 
 import log
-from app.db import SqlHelper
-from app.downloader import Downloader
+from app.helper import DbHelper
 from app.filterrules import FilterRule
 from app.media import Media
 from app.message import Message
 from app.searcher import Searcher
-from app.utils import RequestUtils
+from app.downloader import Downloader
+from app.utils import RequestUtils, StringUtils
 from app.utils.commons import singleton
 from app.utils.types import MediaType, SearchType
 from config import Config
-from web.backend.subscribe import add_rss_subscribe
+from app.subscribe import Subscribe
 
 
 @singleton
@@ -27,8 +27,11 @@ class RssChecker(object):
     media = None
     filterrule = None
     downloader = None
+    subscribe = None
+
     _scheduler = None
     _rss_tasks = []
+    _rss_parsers = []
     _site_users = {
         "D": "下载",
         "R": "订阅",
@@ -44,6 +47,7 @@ class RssChecker(object):
         self.filterrule = FilterRule()
         self.media = Media()
         self.downloader = Downloader()
+        self.subscribe = Subscribe()
         # 移除现有任务
         try:
             if self._scheduler:
@@ -52,32 +56,61 @@ class RssChecker(object):
                 self._scheduler = None
         except Exception as e:
             print(str(e))
+        # 读取解析器列表
+        _dbhelper = DbHelper()
+        rss_parsers = _dbhelper.get_userrss_parser()
+        self._rss_parsers = []
+        for rss_parser in rss_parsers:
+            self._rss_parsers.append(
+                {
+                    "id": rss_parser.ID,
+                    "name": rss_parser.NAME,
+                    "type": rss_parser.TYPE,
+                    "format": rss_parser.FORMAT,
+                    "params": rss_parser.PARAMS,
+                    "note": rss_parser.NOTE
+                }
+            )
         # 读取任务任务列表
-        rsstasks = SqlHelper.get_userrss_tasks()
+        rsstasks = _dbhelper.get_userrss_tasks()
         self._rss_tasks = []
         for task in rsstasks:
-            parser = self.get_userrss_parser(task[3])
-            if task[8]:
-                filterrule = self.filterrule.get_rule_groups(groupid=task[8])
+            parser = self.get_userrss_parser(task.PARSER)
+            if task.FILTER:
+                filterrule = self.filterrule.get_rule_groups(groupid=task.FILTER)
             else:
                 filterrule = {}
+            # 兼容旧配置
+            note = task.NOTE
+            if str(note).find('seeding_time_limit') != -1:
+                note = json.loads(task.NOTE)
+            else:
+                note = {"save_path": note,
+                        "category": '',
+                        "tags": '',
+                        "content_layout": '',
+                        "is_paused": '',
+                        "upload_limit": '',
+                        "download_limit": '',
+                        "ratio_limit": '',
+                        "seeding_time_limit": ''}
             self._rss_tasks.append({
-                "id": task[0],
-                "name": task[1],
-                "address": task[2],
-                "parser": task[3],
+                "id": task.ID,
+                "name": task.NAME,
+                "address": task.ADDRESS,
+                "parser": task.PARSER,
                 "parser_name": parser.get("name") if parser else "",
-                "interval": task[4],
-                "uses": task[5],
-                "uses_text": self._site_users.get(task[5]),
-                "include": task[6],
-                "exclude": task[7],
-                "filter": task[8],
+                "interval": task.INTERVAL,
+                "uses": task.USES,
+                "uses_text": self._site_users.get(task.USES),
+                "include": task.INCLUDE,
+                "exclude": task.EXCLUDE,
+                "filter": task.FILTER,
                 "filter_name": filterrule.get("name") if filterrule else "",
-                "update_time": task[9],
-                "counter": task[10],
-                "state": task[11],
-                "note": task[12]
+                "update_time": task.UPDATE_TIME,
+                "counter": task.PROCESS_COUNT,
+                "state": task.STATE,
+                "note": note
             })
         if not self._rss_tasks:
             return
@@ -94,7 +127,7 @@ class RssChecker(object):
         if rss_flag:
             self._scheduler.print_jobs()
             self._scheduler.start()
-            log_info("【RUN】自定义订阅服务启动")
+            log_info("自定义订阅服务启动")
 
     def get_rsstask_info(self, taskid=None):
         """
@@ -113,6 +146,8 @@ class RssChecker(object):
         """
         if not taskid:
             return
+        # 数据库对象
+        _dbhelper = DbHelper()
         # 需要下载的项目
         rss_download_torrents = []
         # 需要订阅的项目
@@ -159,7 +194,7 @@ class RssChecker(object):
 
                 # 检查是不是处理过
                 meta_name = "%s %s" % (title, year) if year else title
-                if SqlHelper.is_userrss_finished(meta_name, enclosure):
+                if _dbhelper.is_userrss_finished(meta_name, enclosure):
                     log_info("【RSSCHECKER】%s 已处理过" % title)
                     continue
                 # 识别种子名称，开始检索TMDB
@@ -219,19 +254,31 @@ class RssChecker(object):
                     log_warn("【RSSCHECKER】%s RSS报文中没有enclosure种子链接" % taskinfo.get("name"))
                     continue
                 # 插入数据库
-                SqlHelper.insert_rss_torrents(media_info)
+                # FIXME: 这里不能所有的种子都直接插入数据库
+                """
+                如果是下载类型的任务, 需要下载完成后在进行插入, 否则会导致下载失败的种子也插入数据库 不会再次重试
+                # _dbhelper.insert_rss_torrents(media_info) 
+                好的做法应该是, 下载任务的种子的完成状态 用一个新的字段来存储 或者用一个新的表来存储
+                下面针对针对不同的任务类型, 有不同的处理方式, 下载的类型的任务, 下载完成后再插入数据库, 其他的直接插入数据库
+                还有极端情况, 如果RSS任务的种子有重叠, 即 搜索/订阅 和 下载类型 的种子重叠, 就会导致 搜索/订阅 的种子 处理后 也会认为是 下载类型 的种子 处理完成了
+                """
                 # 汇总处理
                 res_num = res_num + 1
                 if taskinfo.get("uses") == "D":
                     # 下载
                     if media_info not in rss_download_torrents:
+                        media_info.note = taskinfo.get("note")
                         rss_download_torrents.append(media_info)
                 elif taskinfo.get("uses") == "R":
                     # 订阅
+                    # 订阅类型的 保持现状直接插入数据库
+                    _dbhelper.insert_rss_torrents(media_info)
                     if media_info not in rss_subscribe_torrents:
                         rss_subscribe_torrents.append(media_info)
                 elif taskinfo.get("uses") == "S":
                     # 搜索
+                    # 搜索类型的 保持现状直接插入数据库
+                    _dbhelper.insert_rss_torrents(media_info)
                     if media_info not in rss_search_torrents:
                         rss_search_torrents.append(media_info)
             except Exception as e:
@@ -241,12 +288,24 @@ class RssChecker(object):
         # 添加下载
         if rss_download_torrents:
             for media in rss_download_torrents:
-                ret, ret_msg = self.downloader.add_pt_torrent(url=media.enclosure,
-                                                              mtype=media.type,
-                                                              page_url=media.page_url)
+                ret, ret_msg = self.downloader.download(media_info=media,
+                                                        is_paused=media.note.get("is_paused"),
+                                                        tag=media.note.get("tags"),
+                                                        download_dir=media.note.get("save_path"),
+                                                        category=media.note.get("category"),
+                                                        content_layout=media.note.get("content_layout"),
+                                                        upload_limit=media.note.get("upload_limit"),
+                                                        download_limit=media.note.get("download_limit"),
+                                                        ratio_limit=media.note.get("ratio_limit"),
+                                                        seeding_time_limit=media.note.get("seeding_time_limit"))
                 if ret:
                     self.message.send_download_message(in_from=SearchType.RSS,
                                                        can_item=media)
+                    # 下载类型的 这里下载成功了 插入数据库
+                    _dbhelper.insert_rss_torrents(media)
+                    # 登记自定义RSS任务下载记录
+                    # FIXME 自定义RSS任务下载记录 里面缺少必要字段无法进行种子是否已下载去重 需要进行表结构升级
+                    _dbhelper.insert_userrss_task_history(taskid, media.org_string, Downloader().get_type().value)
                 else:
                     log_error("【RSSCHECKER】添加下载任务 %s 失败：%s" % (media.get_title_string(), ret_msg or "请检查下载任务是否已存在"))
                     if ret_msg:
@@ -254,11 +313,11 @@ class RssChecker(object):
         # 添加订阅
         if rss_subscribe_torrents:
             for media in rss_subscribe_torrents:
-                code, msg, _ = add_rss_subscribe(mtype=media.type,
-                                                 name=media.title,
-                                                 year=media.year,
-                                                 season=media.begin_season,
-                                                 tmdbid=media.tmdb_id)
+                code, msg, _ = self.subscribe.add_rss_subscribe(mtype=media.type,
+                                                                name=media.title,
+                                                                year=media.year,
+                                                                season=media.begin_season,
+                                                                tmdbid=media.tmdb_id)
                 if code == 0:
                     self.message.send_rss_success_message(in_from=SearchType.RSS, media_info=media)
                 else:
@@ -273,7 +332,7 @@ class RssChecker(object):
         # 更新状态
         counter = len(rss_download_torrents) + len(rss_subscribe_torrents) + len(rss_search_torrents)
         if counter:
-            SqlHelper.update_userrss_task_info(taskid, counter)
+            _dbhelper.update_userrss_task_info(taskid, counter)
 
     def __parse_userrss_result(self, taskinfo):
         """
@@ -319,26 +378,33 @@ class RssChecker(object):
         # 解析数据 XPATH
         rss_result = []
         if rss_parser.get("type") == "XML":
-            result_tree = etree.XML(ret.text.encode("utf-8"))
-            item_list = result_tree.xpath(rss_parser_format.get("list")) or []
-            for item in item_list:
-                rss_item = {}
-                for key, attr in rss_parser_format.get("item", {}).items():
-                    if attr.get("path"):
-                        value = item.xpath(attr.get("path"))
-                    elif attr.get("value"):
-                        value = attr.get("value")
-                    else:
-                        continue
-                    if value:
-                        rss_item.update({key: value[0]})
-                rss_result.append(rss_item)
+            try:
+                result_tree = etree.XML(ret.text.encode("utf-8"))
+                item_list = result_tree.xpath(rss_parser_format.get("list")) or []
+                for item in item_list:
+                    rss_item = {}
+                    for key, attr in rss_parser_format.get("item", {}).items():
+                        if attr.get("path"):
+                            if attr.get("namespaces"):
+                                value = item.xpath("//ns:%s" % attr.get("path"),
+                                                   namespaces={"ns": attr.get("namespaces")})
+                            else:
+                                value = item.xpath(attr.get("path"))
+                        elif attr.get("value"):
+                            value = attr.get("value")
+                        else:
+                            continue
+                        if value:
+                            rss_item.update({key: value[0]})
+                    rss_result.append(rss_item)
+            except Exception as err:
+                log_error("【RSSCHECKER】任务 %s 获取的订阅报文无法解析：%s" % (taskinfo.get("name"), str(err)))
+                return []
         elif rss_parser.get("type") == "JSON":
             try:
                 result_json = json.loads(ret.text)
-            except Exception as e:
-                print(str(e))
-                log_error("【RSSCHECKER】任务 %s 获取的订阅报文不是合法的Json格式" % taskinfo.get("name"))
+            except Exception as err:
+                log_error("【RSSCHECKER】任务 %s 获取的订阅报文不是合法的Json格式：%s" % (taskinfo.get("name"), str(err)))
                 return []
             item_list = jsonpath.jsonpath(result_json, rss_parser_format.get("list"))[0]
             if not isinstance(item_list, list):
@@ -378,35 +444,186 @@ class RssChecker(object):
                 return False, 0
         return True, res_order
 
-    @staticmethod
-    def get_userrss_parser(pid=None):
+    def get_userrss_parser(self, pid=None):
         if pid:
-            rss_parser = SqlHelper.get_userrss_parser(pid)
-            if not rss_parser:
-                return None
-            return {
-                "id": rss_parser[0][0],
-                "name": rss_parser[0][1],
-                "type": rss_parser[0][2],
-                "format": rss_parser[0][3],
-                "params": rss_parser[0][4],
-                "note": rss_parser[0][5]
-            }
+            for rss_parser in self._rss_parsers:
+                if rss_parser.get("id") == int(pid):
+                    return rss_parser
+            return {}
         else:
-            return_parsers = []
-            rss_parsers = SqlHelper.get_userrss_parser()
-            for rss_parser in rss_parsers:
-                return_parsers.append(
-                    {
-                        "id": rss_parser[0],
-                        "name": rss_parser[1],
-                        "type": rss_parser[2],
-                        "format": rss_parser[3],
-                        "params": rss_parser[4],
-                        "note": rss_parser[5]
-                    }
-                )
-            return return_parsers
+            return self._rss_parsers
+
+    def get_rss_articles(self, taskid):
+        """
+        查看自定义RSS报文
+        :param taskid: 自定义RSS的ID
+        """
+        if not taskid:
+            return
+        # 下载订阅的文章列表
+        rss_articles = []
+        # 任务信息
+        taskinfo = self.get_rsstask_info(taskid)
+        if not taskinfo:
+            return
+        rss_result = self.__parse_userrss_result(taskinfo)
+        if len(rss_result) == 0:
+            return []
+        for res in rss_result:
+            try:
+                # 种子名
+                title = res.get('title')
+                if not title:
+                    continue
+                # 种子链接
+                enclosure = res.get('enclosure')
+                # 种子页面
+                link = res.get('link')
+                # 副标题
+                description = res.get('description')
+                # 种子大小
+                size = res.get('size')
+                # 发布日期
+                date = StringUtils.unify_datetime_str(res.get('date'))
+                # 年份
+                year = res.get('year')
+                if year and len(year) > 4:
+                    year = year[:4]
+                # 检查是不是处理过
+                meta_name = "%s %s" % (title, year) if year else title
+                finish_flag = DbHelper().is_userrss_finished(meta_name, enclosure)
+                # 信息聚合
+                params = {
+                    "title": title,
+                    "link": link,
+                    "enclosure": enclosure,
+                    "size": size,
+                    "description": description,
+                    "date": date,
+                    "finish_flag": finish_flag,
+                }
+                if params not in rss_articles:
+                    rss_articles.append(params)
+            except Exception as e:
+                log_error("【RSSCHECKER】获取RSS报文发生错误：%s - %s" % (str(e), traceback.format_exc()))
+        return rss_articles
+
+    def test_rss_articles(self, taskid, title):
+        """
+        测试RSS报文
+        :param taskid: 自定义RSS的ID
+        :param title: RSS报文title
+        """
+        # 任务信息
+        taskinfo = self.get_rsstask_info(taskid)
+        if not taskinfo:
+            return
+        # 识别种子名称，开始检索TMDB
+        media_info = self.media.get_media_info(title=title)
+        if not media_info:
+            log_warn("【RSSCHECKER】%s 识别媒体信息出错！" % title)
+        # 检查种子是否匹配过滤条件
+        match_flag, res_order = self.__is_match_rss(
+            media_info=media_info,
+            taskinfo=taskinfo)
+        # 未匹配
+        if not match_flag:
+            log_info("【RSSCHECKER】%s 不匹配" % title)
+        else:
+            log_info("【RSSCHECKER】%s 识别为 %s %s 匹配成功" % (
+                title,
+                media_info.get_title_string(),
+                media_info.get_season_episode_string()))
+        media_info.set_torrent_info(res_order=res_order)
+        # 检查是否已存在
+        no_exists = {}
+        exist_flag = False
+        if not media_info.tmdb_info:
+            log_info("【RSSCHECKER】%s 识别为 %s 未匹配到媒体信息" % (title, media_info.get_name()))
+        else:
+            if media_info.type == MediaType.MOVIE:
+                exist_flag, no_exists, _ = self.downloader.check_exists_medias(meta_info=media_info,
+                                                                               no_exists=no_exists)
+                if exist_flag:
+                    log_info("【RSSCHECKER】电影 %s 已存在" % media_info.get_title_string())
+            else:
+                exist_flag, no_exists, _ = self.downloader.check_exists_medias(meta_info=media_info,
+                                                                               no_exists=no_exists)
+                if exist_flag:
+                    # 已全部存在
+                    if not no_exists or not no_exists.get(
+                            media_info.tmdb_id):
+                        log_info("【RSSCHECKER】电视剧 %s %s 已存在" % (
+                            media_info.get_title_string(), media_info.get_season_episode_string()))
+                if no_exists.get(media_info.tmdb_id):
+                    log_info("【RSSCHECKER】%s 缺失季集：%s" % (media_info.get_title_string(),
+                                                         no_exists.get(media_info.tmdb_id)))
+        return media_info, match_flag, exist_flag
+
+    @staticmethod
+    def check_rss_articles(flag, articles):
+        """
+        RSS报文处理设置
+        :param flag: set_finished/set_unfinish
+        :param articles: 报文(title/enclosure)
+        """
+        try:
+            _dbhelper = DbHelper()
+            if flag == "set_finished":
+                for article in articles:
+                    title = article.get("title")
+                    enclosure = article.get("enclosure")
+                    if not _dbhelper.is_userrss_finished(title, enclosure):
+                        _dbhelper.simple_insert_rss_torrents(title, enclosure)
+            elif flag == "set_unfinish":
+                for article in articles:
+                    _dbhelper.simple_delete_rss_torrents(article.get("title"), article.get("enclosure"))
+            else:
+                return False
+            return True
+        except Exception as e:
+            log_error("【RSSCHECKER】设置RSS报文状态时发生错误：%s - %s" % (str(e), traceback.format_exc()))
+            return False
+
+    def download_rss_articles(self, taskid, articles):
+        """
+        RSS报文下载
+        :param taskid: 自定义RSS的ID
+        :param articles: 报文(title/enclosure)
+        """
+        if not taskid:
+            return
+        # 任务信息
+        taskinfo = self.get_rsstask_info(taskid)
+        if not taskinfo:
+            return
+        _dbhelper = DbHelper()
+        for article in articles:
+            media = self.media.get_media_info(title=article.get("title"))
+            media.set_torrent_info(enclosure=article.get("enclosure"))
+            ret, ret_msg = self.downloader.download(media_info=media,
+                                                    is_paused=taskinfo["note"].get("is_paused"),
+                                                    tag=taskinfo["note"].get("tags"),
+                                                    download_dir=taskinfo["note"].get("save_path"),
+                                                    category=taskinfo["note"].get("category"),
+                                                    content_layout=taskinfo["note"].get("content_layout"),
+                                                    upload_limit=taskinfo["note"].get("upload_limit"),
+                                                    download_limit=taskinfo["note"].get("download_limit"),
+                                                    ratio_limit=taskinfo["note"].get("ratio_limit"),
+                                                    seeding_time_limit=taskinfo["note"].get("seeding_time_limit"))
+            if ret:
+                self.message.send_download_message(in_from=SearchType.RSS,
+                                                   can_item=media)
+                # 插入数据库
+                _dbhelper.insert_rss_torrents(media)
+                # 登记自定义RSS任务下载记录
+                _dbhelper.insert_userrss_task_history(taskid, media.org_string, Downloader().get_type().value)
+            else:
+                log_error("【RSSCHECKER】添加下载任务 %s 失败：%s" % (media.get_title_string(), ret_msg or "请检查下载任务是否已存在"))
+                if ret_msg:
+                    self.message.send_download_fail_message(media, ret_msg)
+                return False
+        return True
 
 
 def log_info(text):

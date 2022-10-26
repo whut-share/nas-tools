@@ -1,6 +1,8 @@
 import bisect
 import random
 import re
+import time
+import datetime
 from urllib import parse
 
 import cn2an
@@ -19,7 +21,7 @@ class StringUtils:
         if not isinstance(text, str):
             text = str(text)
         text = text.replace(",", "").replace(" ", "").upper()
-        size = re.sub(r"[KMGTPI]*B", "", text, flags=re.IGNORECASE)
+        size = re.sub(r"[KMGTPI]*B?", "", text, flags=re.IGNORECASE)
         try:
             size = float(size)
         except Exception as e:
@@ -62,10 +64,27 @@ class StringUtils:
         """
         判断是否含有中文
         """
-        for ch in word:
-            if '\u4e00' <= ch <= '\u9fff':
-                return True
-        return False
+        chn = re.compile(r'[\u4e00-\u9fff]')
+        if chn.search(word):
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def is_japanese(word):
+        jap = re.compile(r'[\u3040-\u309F\u30A0-\u30FF]')
+        if jap.search(word):
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def is_korean(word):
+        kor = re.compile(r'[\uAC00-\uD7FF]')
+        if kor.search(word):
+            return True
+        else:
+            return False
 
     @staticmethod
     def is_all_chinese(word):
@@ -130,7 +149,7 @@ class StringUtils:
         忽略特殊字符
         """
         # 需要忽略的特殊字符
-        CONVERT_EMPTY_CHARS = r"\.|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|（|）|'|’|!|！|,|～|·|:|：|\-"
+        CONVERT_EMPTY_CHARS = r"\.|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|（|）|'|’|!|！|,|～|·|:|：|\-|~"
         if not text:
             return ""
         text = re.sub(r"[\u200B-\u200D\uFEFF]", "", re.sub(r"%s" % CONVERT_EMPTY_CHARS, replace_word, text),
@@ -141,7 +160,7 @@ class StringUtils:
             return re.sub(r"\s+", " ", text).strip()
 
     @staticmethod
-    def str_filesize(size):
+    def str_filesize(size, pre=2):
         """
         将字节计算为文件大小描述
         """
@@ -158,7 +177,7 @@ class StringUtils:
             return str(size)
         else:
             b, u = d[index]
-        return str(round(size / (b + 1), 2)) + u
+        return str(round(size / (b + 1), pre)) + u
 
     @staticmethod
     def url_equal(url1, url2):
@@ -199,7 +218,7 @@ class StringUtils:
     def clear_file_name(name):
         if not name:
             return None
-        return re.sub(r"[*?\\/\"<>]", "", name, flags=re.IGNORECASE).replace(":", "：")
+        return re.sub(r"[*?\\/\"<>~]", "", name, flags=re.IGNORECASE).replace(":", "：")
 
     @staticmethod
     def get_keyword_from_string(content):
@@ -252,3 +271,69 @@ class StringUtils:
         for i in range(randomlength):
             random_str += base_str[random.randint(0, length)]
         return random_str
+
+    @staticmethod
+    def get_time_stamp(date):
+        tempsTime = None
+        try:
+            result = re.search(r"[\-+]\d+", date)
+            if result:
+                time_area = result.group()
+                utcdatetime = time.strptime(date, '%a, %d %b %Y %H:%M:%S ' + time_area)
+                tempsTime = time.mktime(utcdatetime)
+                tempsTime = datetime.datetime.fromtimestamp(tempsTime)
+        except Exception as err:
+            print(str(err))
+        return tempsTime
+
+    @staticmethod
+    def unify_datetime_str(date_str):
+        """
+        日期时间格式化 统一转成 2020-10-14 07:48:04 这种格式
+        """
+        # 传入的参数如果是None 或者空字符串 直接返回
+        if not date_str:
+            return date_str
+        # 判断日期时间是否满足 yyyy-MM-dd hh:MM:ss 格式
+        if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$", date_str):
+            # 如果满足则直接返回
+            return date_str
+
+        # 场景1: 带有时区的日期字符串 eg: Sat, 15 Oct 2022 14:02:54 +0800
+        try:
+            return datetime.datetime.strftime(
+                datetime.datetime.strptime(date_str,
+                                           '%a, %d %b %Y %H:%M:%S %z'),
+                '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            pass
+
+        # 场景2: 中间带T的日期字符串 eg: 2020-10-14T07:48:04
+        try:
+            return datetime.datetime.strftime(
+                datetime.datetime.strptime(date_str,
+                                           '%Y-%m-%dT%H:%M:%S'),
+                '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            pass
+
+        # 场景3: 中间带T的日期字符串 eg: 2020-10-14T07:48:04.208
+        try:
+            return datetime.datetime.strftime(
+                datetime.datetime.strptime(date_str.split(".")[0],
+                                           '%Y-%m-%dT%H:%M:%S'),
+                '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            pass
+
+        # 场景4: 日期字符串以GMT结尾 eg: Fri, 14 Oct 2022 07:48:04 GMT
+        if date_str.endswith('GMT'):
+            try:
+                return datetime.datetime.strftime(
+                    datetime.datetime.strptime(date_str,
+                                               '%a, %d %b %Y %H:%M:%S GMT'),
+                    '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                pass
+        # 其他情况直接返回
+        return date_str

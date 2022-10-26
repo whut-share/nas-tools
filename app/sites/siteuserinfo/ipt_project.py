@@ -9,10 +9,6 @@ from app.utils import StringUtils
 
 class IptSiteUserInfo(ISiteUserInfo):
     _site_schema = "IPTorrents"
-    _brief_page = "/"
-    _user_traffic_page = None
-    _user_detail_page = None
-    _torrent_seeding_page = None
 
     def _parse_user_base_info(self, html_text):
         html_text = self._prepare_html_text(html_text)
@@ -86,3 +82,9 @@ class IptSiteUserInfo(ISiteUserInfo):
     def _parse_user_traffic_info(self, html_text):
         # TODO
         pass
+
+    def _parse_message_unread_links(self, html_text, msg_links):
+        return None
+
+    def _parse_message_content(self, html_text):
+        return None, None, None

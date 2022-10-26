@@ -141,7 +141,7 @@
             <div class="col-lg-4">
               <div class="mb-3">
                 <label class="form-label">消息推送代理 <span class="form-help" title="由于微信官方限制，2022年6月20日后创建的企业微信应用需要有固定的公网IP地址并加入IP白名单后才能发送消息，使用有固定公网IP的代理服务器转发可解决该问题；代理服务器需自行搭建，搭建方法可参考项目主页说明" data-bs-toggle="tooltip">?</span></label>
-                <input type="text" value="{% if Config.message.wechat %}{% if Config.message.wechat.default_proxy == true %}https://nastool.jxxghp.cn{% else %}{{ Config.message.wechat.default_proxy or '' }}{% endif %}{% endif %}" id="default_proxy" class="form-control" placeholder="https://xxxx.xxxx.xxx">
+                <input type="text" value="{% if Config.message.wechat %}{% if Config.message.wechat.default_proxy == true %}https://wechat.nastool.cn{% else %}{{ Config.message.wechat.default_proxy or '' }}{% endif %}{% endif %}" id="default_proxy" class="form-control" placeholder="https://xxxx.xxxx.xxx">
               </div>
             </div>
           </div>
@@ -195,6 +195,14 @@
               </div>
             </div>
           </div>
+          <div class="row">
+            <div class="col-lg-12">
+              <div class="mb-3">
+                <label class="form-label required">User Ids <span class="form-help" title="允许使用telegram机器人的用户Id，留空则只允许管理员使用，使用,分隔多个Id" data-bs-toggle="tooltip">?</span></label>
+                <input type="text" value="{% if Config.message.telegram %}{{ Config.message.telegram.telegram_user_ids or '' }}{% endif %}" id="telegram_user_ids" class="form-control" placeholder="允许使用机器人的用户ID，使用,分隔">
+              </div>
+            </div>
+          </div>
         </div>
         <div class="card-body">
           <div class="row">
@@ -202,7 +210,7 @@
               <div class="mb-3">
                 <label class="form-check form-switch">
                   <input class="form-check-input" type="checkbox" id="webhook" {% if  Config.message.telegram.webhook %}checked{% endif %}>
-                  <span class="form-check-label">WebHook <span class="form-help" title="Telegram回调开关，打开后可以实现远程控制，需要在基础设置为正确配置好外网访问地址；受Telegram官方限制，外网访问地址需要设置为以下端口之一：443, 80, 88, 8443，且需要有公网认证的可信SSL证书" data-bs-toggle="tooltip">?</span></span>
+                  <span class="form-check-label">WebHook <span class="form-help" title="Telegram机器人消息有两种模式：WebHook或消息轮循；开启后将使用WebHook方式，需要在基础设置中正确配置好外网访问地址，同时受Telegram官方限制，外网访问地址需要设置为以下端口之一：443, 80, 88, 8443，且需要有公网认证的可信SSL证书；关闭后将使用消息轮循方式，使用该方式时，需要在基础设置->安全处将Telegram ipv4源地址设置为127.0.0.1，推荐关闭WebHook" data-bs-toggle="tooltip">?</span></span>
                 </label>
               </div>
             </div>
