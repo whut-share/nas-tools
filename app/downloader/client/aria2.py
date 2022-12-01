@@ -15,8 +15,7 @@ class Aria2(IDownloadClient):
 
     def get_config(self):
         # 读取配置文件
-        config = Config()
-        aria2config = config.get_config('aria2')
+        aria2config = Config().get_config('aria2')
         if aria2config:
             self.host = aria2config.get("host")
             if self.host:
@@ -61,7 +60,7 @@ class Aria2(IDownloadClient):
     def get_completed_torrents(self, **kwargs):
         return self.get_torrents(status="completed")
 
-    def set_torrents_status(self, ids):
+    def set_torrents_status(self, ids, tags=None):
         return self.delete_torrents(ids=ids, delete_file=False)
 
     def get_transfer_task(self, tag):

@@ -8,6 +8,9 @@ if [ "$NASTOOL_AUTO_UPDATE" = "true" ]; then
     if [ ! -s /tmp/third_party.txt.sha256sum ]; then
         sha256sum third_party.txt > /tmp/third_party.txt.sha256sum
     fi
+    if [ ! -s /tmp/package_list.txt.sha256sum ]; then
+        sha256sum package_list.txt > /tmp/package_list.txt.sha256sum
+    fi
     echo "更新程序..."
     git checkout .
     git remote set-url origin ${REPO_URL} &>/dev/null
@@ -18,6 +21,7 @@ if [ "$NASTOOL_AUTO_UPDATE" = "true" ]; then
     git pull
     if [ $? -eq 0 ]; then
         echo "更新成功..."
+        # Python依赖包更新
         hash_old=$(cat /tmp/requirements.txt.sha256sum)
         hash_new=$(sha256sum requirements.txt)
         if [ "$hash_old" != "$hash_new" ]; then
@@ -43,6 +47,21 @@ if [ "$NASTOOL_AUTO_UPDATE" = "true" ]; then
                 fi
             fi
         fi
+        # 系统软件包更新
+        hash_old=$(cat /tmp/package_list.txt.sha256sum)
+        hash_new=$(sha256sum package_list.txt)
+        if [ "$hash_old" != "$hash_new" ]; then
+            echo "检测到package_list.txt有变化，更新软件包..."
+            apk add --no-cache libffi-dev
+            apk add --no-cache $(echo $(cat package_list.txt))
+            if [ $? -ne 0 ]; then
+                echo "无法更新软件包，请更新镜像..."
+            else
+                apk del libffi-dev
+                echo "软件包安装成功..."
+                sha256sum package_list.txt > /tmp/package_list.txt.sha256sum
+            fi
+        fi
     else
         echo "更新失败，继续使用旧的程序来启动..."
     fi
@@ -51,10 +70,10 @@ else
 fi
 
 echo "以PUID=${PUID}，PGID=${PGID}的身份启动程序..."
-echo "注意：日志将停止打印，请通过文件或WEB页面查看日志"
-mkdir -p /config/logs/supervisor
+
 mkdir -p /.local
-chown -R ${PUID}:${PGID} ${WORKDIR} /config /usr/lib/chromium /.local
+mkdir -p /.pm2
+chown -R ${PUID}:${PGID} ${WORKDIR} /config /usr/lib/chromium /.local /.pm2
 export PATH=$PATH:/usr/lib/chromium
 umask ${UMASK}
-exec su-exec ${PUID}:${PGID} /usr/bin/supervisord -n -c ${WORKDIR}/supervisord.conf
+exec su-exec ${PUID}:${PGID} pm2-runtime start run.py -n NAStool --interpreter python3

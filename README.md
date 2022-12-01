@@ -12,8 +12,12 @@ TG频道：https://t.me/nastool
 
 WIKI：https://github.com/jxxghp/nas-tools/wiki
 
+API: http://localhost:3000/api/v1/
+
 
 ## 功能：
+
+本软件的初衷是实现影视资源的自动化管理，释放双手、聚焦观影。需要有良好的网络环境及私有站点才能获得较好的使用体验。
 
 ### 1、资源检索和订阅
 * 站点RSS聚合，想看的加入订阅，资源自动实时追新。
@@ -46,6 +50,7 @@ docker pull jxxghp/nas-tools:latest
 ### 2、本地运行
 python3版本，如发现缺少依赖包需额外安装
 ```
+git clone -b master https://github.com/jxxghp/nas-tools --recurse-submodule 
 python3 -m pip install -r requirements.txt
 export NASTOOL_CONFIG="/xxx/config/config.yaml"
 nohup python3 run.py & 

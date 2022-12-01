@@ -13,8 +13,7 @@ class Client115(IDownloadClient):
 
     def get_config(self):
         # 读取配置文件
-        config = Config()
-        cloudconfig = config.get_config('client115')
+        cloudconfig = Config().get_config('client115')
         if cloudconfig:
             self.downclient = Py115(cloudconfig.get("cookie"))
 
@@ -91,7 +90,7 @@ class Client115(IDownloadClient):
     def stop_torrents(self, ids):
         pass
 
-    def set_torrents_status(self, ids):
+    def set_torrents_status(self, ids, tags=None):
         return self.delete_torrents(ids=ids, delete_file=False)
 
     def get_download_dirs(self):

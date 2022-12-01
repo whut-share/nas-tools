@@ -92,6 +92,8 @@ class CONFIGUSERRSS(Base):
     UPDATE_TIME = Column(Text)
     PROCESS_COUNT = Column(Text)
     STATE = Column(Text)
+    SAVE_PATH = Column(Text)
+    DOWNLOAD_SETTING = Column(Integer)
     NOTE = Column(Text)
 
 
@@ -161,6 +163,36 @@ class DOWNLOADHISTORY(Base):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
+class DOWNLOADSETTING(Base):
+    __tablename__ = 'DOWNLOAD_SETTING'
+
+    ID = Column(Integer, Sequence('ID'), primary_key=True)
+    NAME = Column(Text)
+    CATEGORY = Column(Text)
+    TAGS = Column(Text)
+    CONTENT_LAYOUT = Column(Integer)
+    IS_PAUSED = Column(Integer)
+    UPLOAD_LIMIT = Column(Integer)
+    DOWNLOAD_LIMIT = Column(Integer)
+    RATIO_LIMIT = Column(Integer)
+    SEEDING_TIME_LIMIT = Column(Integer)
+    DOWNLOADER = Column(Text)
+    NOTE = Column(Text)
+
+
+class MESSAGECLIENT(Base):
+    __tablename__ = 'MESSAGE_CLIENT'
+
+    ID = Column(Integer, Sequence('ID'), primary_key=True)
+    NAME = Column(Text)
+    TYPE = Column(Text)
+    CONFIG = Column(Text)
+    SWITCHS = Column(Text)
+    INTERACTIVE = Column(Integer)
+    ENABLED = Column(Integer)
+    NOTE = Column(Text)
+
+
 class RSSHISTORY(Base):
     __tablename__ = 'RSS_HISTORY'
 
@@ -178,6 +210,9 @@ class RSSHISTORY(Base):
     FINISH_TIME = Column(Text)
     NOTE = Column(Text)
 
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 class RSSMOVIES(Base):
     __tablename__ = 'RSS_MOVIES'
@@ -187,8 +222,22 @@ class RSSMOVIES(Base):
     YEAR = Column(Text)
     TMDBID = Column(Text)
     IMAGE = Column(Text)
-    DESC = Column(Text)
+    RSS_SITES = Column(Text)
+    SEARCH_SITES = Column(Text)
+    OVER_EDITION = Column(Integer)
+    FILTER_RESTYPE = Column(Text)
+    FILTER_PIX = Column(Text)
+    FILTER_RULE = Column(Integer)
+    FILTER_TEAM = Column(Text)
+    SAVE_PATH = Column(Text)
+    DOWNLOAD_SETTING = Column(Integer)
+    FUZZY_MATCH = Column(Integer)
     STATE = Column(Text)
+    DESC = Column(Text)
+    NOTE = Column(Text)
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 class RSSTORRENTS(Base):
@@ -216,10 +265,26 @@ class RSSTVS(Base):
     SEASON = Column(Text)
     TMDBID = Column(Text)
     IMAGE = Column(Text)
-    DESC = Column(Text)
+    RSS_SITES = Column(Text)
+    SEARCH_SITES = Column(Text)
+    OVER_EDITION = Column(Integer)
+    FILTER_RESTYPE = Column(Text)
+    FILTER_PIX = Column(Text)
+    FILTER_RULE = Column(Integer)
+    FILTER_TEAM = Column(Text)
+    SAVE_PATH = Column(Text)
+    DOWNLOAD_SETTING = Column(Integer)
+    FUZZY_MATCH = Column(Integer)
+    TOTAL_EP = Column(Integer)
+    CURRENT_EP = Column(Integer)
     TOTAL = Column(Integer)
     LACK = Column(Integer)
     STATE = Column(Text)
+    DESC = Column(Text)
+    NOTE = Column(Text)
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 class RSSTVEPISODES(Base):
@@ -402,17 +467,23 @@ class TRANSFERHISTORY(Base):
     __tablename__ = 'TRANSFER_HISTORY'
 
     ID = Column(Integer, Sequence('ID'), primary_key=True)
-    SOURCE = Column(Text)
     MODE = Column(Text)
     TYPE = Column(Text)
-    FILE_PATH = Column(Text, index=True)
-    FILE_NAME = Column(Text, index=True)
-    TITLE = Column(Text, index=True)
     CATEGORY = Column(Text)
+    TMDBID = Column(Integer)
+    TITLE = Column(Text, index=True)
     YEAR = Column(Text)
-    SE = Column(Text)
+    SEASON_EPISODE = Column(Text)
+    SOURCE = Column(Text)
+    SOURCE_PATH = Column(Text, index=True)
+    SOURCE_FILENAME = Column(Text, index=True)
     DEST = Column(Text)
+    DEST_PATH = Column(Text)
+    DEST_FILENAME = Column(Text)
     DATE = Column(Text)
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 class TRANSFERUNKNOWN(Base):

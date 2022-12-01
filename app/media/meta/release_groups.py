@@ -59,7 +59,8 @@ rg_U2 = []
 rg_ultrahd = []
 
 #  其他常见组
-rg_other = ['B(?:MDru|eyondHD|TN)', 'C(?:fandora|trlhd|MRG)', 'DON', 'EVO', 'FLUX', 'HONE(?:|yG)', 'N(?:oGroup|T(?:b|G))', 'PandaMoon', 'SMURF', 'T(?:EPES|aengoo|rollHD )']
+rg_other = ['B(?:MDru|eyondHD|TN)', 'C(?:fandora|trlhd|MRG)', 'DON', 'EVO', 'FLUX', 'HONE(?:|yG)',
+            'N(?:oGroup|T(?:b|G))', 'PandaMoon', 'SMURF', 'T(?:EPES|aengoo|rollHD )']
 rg_anime = ['ANi', 'HYSUB', 'KTXP', 'LoliHouse', 'MCE', 'Nekomoe kissaten', '(?:Lilith|NC)-Raws', '织梦字幕组']
 
 sites = [rg_0ff,
@@ -126,9 +127,17 @@ release_groups = []
 for site in sites:
     for release_group in site:
         release_groups.append(release_group)
-release_groups = '|'.join(release_groups)
-release_groups = re.compile(r"(?<=[-@\[￡])(?:%s)(?=[@.\s\]\[])" % release_groups, re.I)
+RELEASE_GROUPS = '|'.join(release_groups)
+
 
 #  忽略大小写
-def rg_match(name, groups):
-    return '@'.join(re.findall(groups, name))
+def rg_match(title=None, groups=None):
+    """
+    :param title: 资源标题或文件名
+    :param groups: 制作组/字幕组
+    :return: 匹配结果
+    """
+    if not title or not groups:
+        return ""
+    groups_re = re.compile(r"(?<=[-@\[￡])%s(?=[@.\s\]\[])" % groups, re.I)
+    return '@'.join(re.findall(groups_re, title))

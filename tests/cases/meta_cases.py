@@ -1,10 +1,74 @@
 meta_cases = [{
+    "title": "哆啦A梦：大雄的宇宙小战争 2021 (2022) - 1080p.mp4",
+    "subtitle": "",
+    "target": {
+        "type": "电影",
+        "cn_name": "哆啦A梦：大雄的宇宙小战争 2021",
+        "en_name": "",
+        "year": "2022",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "",
+        "pix": "1080p",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
+    "title": "新精武门1991 (1991).mkv",
+    "subtitle": "",
+    "target": {
+        "type": "电影",
+        "cn_name": "新精武门1991",
+        "en_name": "",
+        "year": "1991",
+        "part": "",
+        "season": "",
+        "episode": "",
+        "restype": "",
+        "pix": "",
+        "video_codec": "",
+        "audio_codec": ""
+    }
+}, {
+    "title": "24 S01 1080p WEB-DL AAC2.0 H.264-BTN",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "24",
+        "year": "",
+        "part": "",
+        "season": "S01",
+        "episode": "",
+        "restype": "WEB-DL",
+        "pix": "1080p",
+        "video_codec": "H264",
+        "audio_codec": "AAC 2.0"
+    }
+}, {
+    "title": "Qi Refining for 3000 Years S01E06 2022 1080p B-Blobal WEB-DL x264 AAC-AnimeS@AdWeb",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "Qi Refining For 3000 Years",
+        "year": "2022",
+        "part": "",
+        "season": "S01",
+        "episode": "E06",
+        "restype": "WEB-DL",
+        "pix": "1080p",
+        "video_codec": "x264",
+        "audio_codec": "AAC"
+    }
+}, {
     "title": "Noumin Kanren no Skill Bakka Agetetara Naze ka Tsuyoku Natta S01E02 2022 1080p B-Global WEB-DL x264 AAC-AnimeS@ADWeb[2022年10月新番]",
     "subtitle": "",
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Noumin Kanren no Skill Bakka Agetetara Naze ka Tsuyoku Natta",
+        "en_name": "Noumin Kanren No Skill Bakka Agetetara Naze Ka Tsuyoku Natta",
         "year": "2022",
         "part": "",
         "season": "S01",
@@ -20,7 +84,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "dou luo da lu",
+        "en_name": "Dou Luo Da Lu",
         "year": "2018",
         "part": "",
         "season": "S01",
@@ -36,7 +100,7 @@ meta_cases = [{
     "target": {
         "type": "电影",
         "cn_name": "",
-        "en_name": "Thor Love and Thunder",
+        "en_name": "Thor Love And Thunder",
         "year": "2022",
         "part": "",
         "season": "",
@@ -52,7 +116,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e",
+        "en_name": "Youkoso Jitsuryoku Shijou Shugi No Kyoushitsu E",
         "year": "",
         "part": "",
         "season": "S02",
@@ -148,7 +212,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Soredemo Ayumu wa Yosetekuru",
+        "en_name": "Soredemo Ayumu Wa Yosetekuru",
         "year": "",
         "part": "",
         "season": "S01",
@@ -164,7 +228,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "不死者之王",
-        "en_name": "OVERLORD Ⅳ",
+        "en_name": "Overlord Ⅳ",
         "year": "",
         "part": "",
         "season": "S04",
@@ -196,7 +260,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "组长女儿与保姆",
-        "en_name": "Kumichou Musume to Sewagakari",
+        "en_name": "Kumichou Musume To Sewagakari",
         "year": "",
         "part": "",
         "season": "S01",
@@ -212,7 +276,7 @@ meta_cases = [{
     "target": {
         "type": "电影",
         "cn_name": "",
-        "en_name": "Nande Koko ni Sensei ga!?",
+        "en_name": "Nande Koko Ni Sensei Ga!?",
         "year": "2019",
         "part": "",
         "season": "",
@@ -244,7 +308,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Gal to Kyouryuu",
+        "en_name": "Gal To Kyouryuu",
         "year": "",
         "part": "",
         "season": "S01",
@@ -292,7 +356,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Throne of Seal",
+        "en_name": "Throne Of Seal",
         "year": "2022",
         "part": "",
         "season": "S01",
@@ -340,7 +404,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "OVERLORD",
+        "en_name": "Overlord",
         "year": "",
         "part": "",
         "season": "S04",
@@ -356,7 +420,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Made in Abyss",
+        "en_name": "Made In Abyss",
         "year": "",
         "part": "",
         "season": "S02",
@@ -404,7 +468,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Soredemo Ayumu wa Yosetekuru",
+        "en_name": "Soredemo Ayumu Wa Yosetekuru",
         "year": "",
         "part": "",
         "season": "S01",
@@ -420,7 +484,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Kinsou no Vermeil",
+        "en_name": "Kinsou No Vermeil",
         "year": "",
         "part": "",
         "season": "S01",
@@ -436,7 +500,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Hataraku Maou sama",
+        "en_name": "Hataraku Maou Sama",
         "year": "2022",
         "part": "",
         "season": "S02",
@@ -500,7 +564,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Stand up Comedy",
+        "en_name": "Stand Up Comedy",
         "year": "2022",
         "part": "PartA",
         "season": "S01",
@@ -516,7 +580,7 @@ meta_cases = [{
     "target": {
         "type": "电影",
         "cn_name": "教父3",
-        "en_name": "The Godfather Part III",
+        "en_name": "The Godfather Part Iii",
         "year": "1990",
         "part": "",
         "season": "",
@@ -532,7 +596,7 @@ meta_cases = [{
     "target": {
         "type": "电影",
         "cn_name": "",
-        "en_name": "A Quiet Place Part II",
+        "en_name": "A Quiet Place Part Ii",
         "year": "2020",
         "part": "",
         "season": "",
@@ -596,7 +660,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "Hataraku Maou-sama!!",
+        "en_name": "Hataraku Maou-Sama!!",
         "year": "",
         "part": "",
         "season": "S02",
@@ -660,7 +724,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "The Heart of Genius",
+        "en_name": "The Heart Of Genius",
         "year": "2022",
         "part": "",
         "season": "S01",
@@ -676,7 +740,7 @@ meta_cases = [{
     "target": {
         "type": "电视剧",
         "cn_name": "",
-        "en_name": "The Heart of Genius",
+        "en_name": "The Heart Of Genius",
         "year": "2022",
         "part": "",
         "season": "S01",
@@ -781,5 +845,37 @@ meta_cases = [{
         "pix": "",
         "video_codec": "",
         "audio_codec": ""
+    }
+}, {
+    "title": "Rick and Morty.S06E06.JuRicksic.Mort.1080p.HMAX.WEBRip.DD5.1.x264-NTb[rartv]",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "Rick And Morty",
+        "year": "",
+        "part": "",
+        "season": "S06",
+        "episode": "E06",
+        "restype": "WEBRip",
+        "pix": "1080p",
+        "video_codec": "x264",
+        "audio_codec": "DD 5.1"
+    }
+}, {
+    "title": "rick and Morty.S06E05.JuRicksic.Mort.1080p.HMAX.WEBRip.DD5.1.x264-NTb[rartv]",
+    "subtitle": "",
+    "target": {
+        "type": "电视剧",
+        "cn_name": "",
+        "en_name": "Rick And Morty",
+        "year": "",
+        "part": "",
+        "season": "S06",
+        "episode": "E05",
+        "restype": "WEBRip",
+        "pix": "1080p",
+        "video_codec": "x264",
+        "audio_codec": "DD 5.1"
     }
 }]

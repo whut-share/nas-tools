@@ -12,8 +12,7 @@ class Jackett(IIndexer):
     _password = None
 
     def init_config(self):
-        config = Config()
-        jackett = config.get_config('jackett')
+        jackett = Config().get_config('jackett')
         if jackett:
             self.api_key = jackett.get('api_key')
             self._password = jackett.get('password')

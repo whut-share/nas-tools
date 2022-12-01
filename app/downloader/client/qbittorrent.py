@@ -18,8 +18,7 @@ class Qbittorrent(IDownloadClient):
 
     def get_config(self):
         # 读取配置文件
-        config = Config()
-        qbittorrent = config.get_config('qbittorrent')
+        qbittorrent = Config().get_config('qbittorrent')
         if qbittorrent:
             self.host = qbittorrent.get('qbhost')
             self.port = int(qbittorrent.get('qbport')) if str(qbittorrent.get('qbport')).isdigit() else 0
@@ -114,12 +113,10 @@ class Qbittorrent(IDownloadClient):
             print(str(err))
             return False
 
-    def set_torrents_status(self, ids):
+    def set_torrents_status(self, ids, tags=None):
         if not self.qbc:
             return
         try:
-            # 删除标签
-            self.qbc.torrents_remove_tags(tags=PT_TAG, torrent_hashes=ids)
             # 打标签
             self.qbc.torrents_add_tags(tags="已整理", torrent_hashes=ids)
             # 超级做种
@@ -198,7 +195,8 @@ class Qbittorrent(IDownloadClient):
                     upload_limit=None,
                     download_limit=None,
                     ratio_limit=None,
-                    seeding_time_limit=None
+                    seeding_time_limit=None,
+                    cookie=None
                     ):
         """
         添加种子
@@ -212,6 +210,7 @@ class Qbittorrent(IDownloadClient):
         :param download_limit: 下载限速 Kb/s
         :param ratio_limit: 分享率限制
         :param seeding_time_limit: 做种时间限制
+        :param cookie: 站点Cookie用于辅助下载种子
         :return: bool
         """
         if not self.qbc or not content:
@@ -266,7 +265,8 @@ class Qbittorrent(IDownloadClient):
                                             download_limit=download_limit,
                                             ratio_limit=ratio_limit,
                                             seeding_time_limit=seeding_time_limit,
-                                            use_auto_torrent_management=use_auto_torrent_management)
+                                            use_auto_torrent_management=use_auto_torrent_management,
+                                            cookie=cookie)
             return True if qbc_ret and str(qbc_ret).find("Ok") != -1 else False
         except Exception as err:
             print(str(err))

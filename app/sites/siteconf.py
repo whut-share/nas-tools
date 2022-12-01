@@ -195,7 +195,7 @@ class SiteConf:
         },
         'hdchina.org': {
             'FREE': ["//img[@class='pro_free']"],
-            '2XFREE': ["//img[@class='pro_free2up"],
+            '2XFREE': ["//img[@class='pro_free2up']"],
             'HR': [],
             'PEER_COUNT': ["//div[@id='peercount']/b[1]"],
         },
@@ -358,9 +358,27 @@ class SiteConf:
         'hhanclub.top': {
             'FREE': ["//font[@class='free']"],
             '2XFREE': [],
+            'HR': ["//img[@class='hitandrun']"],
+            'PEER_COUNT': [],
+        },
+        'zmpt.cc': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
             'HR': [],
             'PEER_COUNT': [],
         },
+        'ihdbits.me': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        },
+        'leaves.red': {
+            'FREE': ["//font[@class='free']"],
+            '2XFREE': ["//font[@class='twoupfree']"],
+            'HR': [],
+            'PEER_COUNT': [],
+        }
     }
     # 公共BT站点
     PUBLIC_TORRENT_SITES = {
@@ -407,7 +425,8 @@ class SiteConf:
             "proxy": False
         },
         'www.mp4ba.vip': {
-            "proxy": False
+            "proxy": False,
+            "referer": True
         },
         'www.miobt.com': {
             "proxy": True
@@ -418,5 +437,8 @@ class SiteConf:
         },
         'btsow.quest': {
             "proxy": True
+        },
+        'www.hdpianyuan.com': {
+            "proxy": False
         }
     }

@@ -6,7 +6,7 @@ from app.media.meta.metabase import MetaBase
 from app.utils import StringUtils
 from app.utils.tokens import Tokens
 from app.utils.types import MediaType
-from app.media.meta.release_groups import release_groups, rg_match
+from app.media.meta.release_groups import RELEASE_GROUPS, rg_match
 
 
 class MetaVideo(MetaBase):
@@ -30,7 +30,7 @@ class MetaVideo(MetaBase):
     _name_no_chinese_re = r".*版|.*字幕"
     _name_se_words = ['共', '第', '季', '集', '话', '話', '期']
     _name_nostring_re = r"^PTS|^JADE|^AOD|^CHC|^[A-Z]{1,4}TV[\-0-9UVHDK]*" \
-                        r"|HBO$|\s+HBO|\d{1,2}th|\d{1,2}bit|NETFLIX|AMAZON|IMAX|^3D|\s+3D|\s+BBC|BBC$|DISNEY\+?|XXX|\s+DC$" \
+                        r"|HBO$|\s+HBO|\d{1,2}th|\d{1,2}bit|NETFLIX|AMAZON|IMAX|^3D|\s+3D|^BBC\s+|\s+BBC|BBC$|DISNEY\+?|XXX|\s+DC$" \
                         r"|[第\s共]+[0-9一二三四五六七八九十\-\s]+季" \
                         r"|[第\s共]+[0-9一二三四五六七八九十\-\s]+[集话話]" \
                         r"|连载|日剧|美剧|电视剧|动画片|动漫|欧美|西德|日韩|超高清|高清|蓝光|翡翠台|梦幻天堂·龙网|★?\d*月?新番" \
@@ -108,12 +108,12 @@ class MetaVideo(MetaBase):
             self.type = MediaType.MOVIE
         # 去掉名字中不需要的干扰字符，过短的纯数字不要
         self.cn_name = self.__fix_name(self.cn_name)
-        self.en_name = self.__fix_name(self.en_name)
+        self.en_name = StringUtils.str_title(self.__fix_name(self.en_name))
         # 处理part
         if self.part and self.part.upper() == "PART":
             self.part = None
         # 制作组/字幕组
-        self.resource_team = rg_match(title + " ", release_groups)
+        self.resource_team = rg_match(f"{title} ", RELEASE_GROUPS) or None
 
     def __fix_name(self, name):
         if not name:
@@ -121,9 +121,14 @@ class MetaVideo(MetaBase):
         name = re.sub(r'%s' % self._name_nostring_re, '', name,
                       flags=re.IGNORECASE).strip()
         name = re.sub(r'\s+', ' ', name)
-        if self.year:
-            name = name.replace(str(self.year), '').strip()
-        if name.isdigit() and int(name) < 1800:
+        if name.isdigit() \
+                and int(name) < 1800 \
+                and not self.year \
+                and not self.begin_season \
+                and not self.resource_pix \
+                and not self.resource_type \
+                and not self.audio_encode \
+                and not self.video_encode:
             if self.begin_episode is None:
                 self.begin_episode = int(name)
                 name = None
@@ -135,20 +140,15 @@ class MetaVideo(MetaBase):
         if not token:
             return
         # 回收标题
-        if self._unknown_name_str and self._unknown_name_str != self.year:
-            if not self.en_name:
-                self.en_name = self._unknown_name_str
-            elif self._unknown_name_str != self.year:
-                self.en_name = "%s %s" % (self.en_name, self._unknown_name_str)
-            self._last_token_type = "enname"
+        if self._unknown_name_str:
+            if not self.cn_name:
+                if not self.en_name:
+                    self.en_name = self._unknown_name_str
+                elif self._unknown_name_str != self.year:
+                    self.en_name = "%s %s" % (self.en_name, self._unknown_name_str)
+                self._last_token_type = "enname"
             self._unknown_name_str = ""
         if self._stop_name_flag:
-            if self._unknown_name_str and self._unknown_name_str != self.year:
-                if self.en_name:
-                    self.en_name = "%s %s" % (self.en_name, self._unknown_name_str)
-                else:
-                    self.cn_name = "%s %s" % (self.cn_name, self._unknown_name_str)
-                self._unknown_name_str = ""
             return
         if token in self._name_se_words:
             self._last_token_type = 'name_se_words'
@@ -194,8 +194,6 @@ class MetaVideo(MetaBase):
                         self._continue_flag = False
                     elif token.isdigit() and len(token) == 4:
                         # 4位数字，可能是年份，也可能真的是标题的一部分，也有可能是集
-                        if not 1900 < int(token) < 2050:
-                            return
                         if not self._unknown_name_str:
                             self._unknown_name_str = token
                 else:
@@ -253,8 +251,10 @@ class MetaVideo(MetaBase):
         if not 1900 < int(token) < 2050:
             return
         if self.year:
-            if self._last_token_type == "enname" and self.en_name:
+            if self.en_name:
                 self.en_name = "%s %s" % (self.en_name, self.year)
+            elif self.cn_name:
+                self.cn_name = "%s %s" % (self.cn_name, self.year)
         self.year = token
         self._last_token_type = "year"
         self._continue_flag = False
@@ -397,7 +397,7 @@ class MetaVideo(MetaBase):
                 self._continue_flag = False
                 self.type = MediaType.TV
             elif self.begin_episode is None \
-                    and 1 < len(token) < 5 \
+                    and 1 < len(token) < 4 \
                     and self._last_token_type != "year" \
                     and self._last_token_type != "videoencode" \
                     and token != self._unknown_name_str:

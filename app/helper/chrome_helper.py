@@ -7,17 +7,27 @@ from threading import Lock
 from app.utils import SystemUtils, RequestUtils
 import undetected_chromedriver.v2 as uc
 
+from config import WEBDRIVER_PATH
+
 CHROME_LOCK = Lock()
 lock = Lock()
 
 
 class ChromeHelper(object):
 
-    _executable_path = "/usr/lib/chromium/chromedriver" if SystemUtils.is_docker() else None
+    _executable_path = None
+        
     _chrome = None
+    _headless = False
 
-    def __init__(self):
-        pass
+    def __init__(self, headless=False):
+
+        self._executable_path = WEBDRIVER_PATH.get(SystemUtils.get_system().value)
+
+        if not os.environ.get("NASTOOL_DISPLAY"):
+            self._headless = True
+        else:
+            self._headless = headless
 
     @property
     def browser(self):
@@ -28,9 +38,9 @@ class ChromeHelper(object):
 
     def get_status(self):
         if self._executable_path \
-                and not os.path.exists(self._executable_path):
-            return False
-        return True
+                and os.path.exists(self._executable_path):
+            return True
+        return False
 
     def __get_browser(self):
         if not self.get_status():
@@ -43,7 +53,7 @@ class ChromeHelper(object):
         options.add_argument("--start-maximized")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument('--no-first-run --no-service-autorun --password-store=basic')
-        if not os.environ.get("NASTOOL_DISPLAY"):
+        if self._headless:
             options.add_argument('--headless')
         prefs = {
             "useAutomationExtension": False,
@@ -120,7 +130,7 @@ class ChromeWithPrefs(uc.Chrome):
                 (undot_key(key, value) for key, value in prefs.items()),
             )
 
-            # create an user_data_dir and add its path to the options
+            # create a user_data_dir and add its path to the options
             user_data_dir = os.path.normpath(tempfile.mkdtemp())
             options.add_argument(f"--user-data-dir={user_data_dir}")
 

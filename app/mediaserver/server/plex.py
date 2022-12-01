@@ -23,8 +23,7 @@ class Plex(IMediaServer):
         self.init_config()
 
     def init_config(self):
-        config = Config()
-        plex = config.get_config('plex')
+        plex = Config().get_config('plex')
         if plex:
             self._host = plex.get('host')
             self._token = plex.get('token')

@@ -20,8 +20,7 @@ class Jellyfin(IMediaServer):
         self.init_config()
 
     def init_config(self):
-        config = Config()
-        jellyfin = config.get_config('jellyfin')
+        jellyfin = Config().get_config('jellyfin')
         if jellyfin:
             self._host = jellyfin.get('host')
             if self._host:
