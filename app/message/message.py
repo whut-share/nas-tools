@@ -6,7 +6,7 @@ import log
 from app.utils.commons import singleton
 from config import Config
 from app.helper import DbHelper
-from app.message import Bark, IyuuMsg, PushPlus, ServerChan, Telegram, WeChat
+from app.message.client import Bark, IyuuMsg, PushDeerClient, PushPlus, ServerChan, Telegram, WeChat, Slack, Gotify
 from app.utils import StringUtils
 from app.message.message_center import MessageCenter
 from app.utils.types import SearchType, MediaType
@@ -23,13 +23,16 @@ class Message:
 
     # 消息通知类型
     MESSAGE_DICT = {
-        "channel": {
+        "client": {
             "telegram": {"name": "Telegram", "img_url": "../static/img/telegram.png", "search_type": SearchType.TG},
-            "wechat": {"name": "WeChat", "img_url": "../static/img/wechat.png", "search_type": SearchType.WX},
-            "serverchan": {"name": "ServerChan", "img_url": "../static/img/serverchan.png"},
+            "wechat": {"name": "微信", "img_url": "../static/img/wechat.png", "search_type": SearchType.WX},
+            "serverchan": {"name": "Server酱", "img_url": "../static/img/serverchan.png"},
             "bark": {"name": "Bark", "img_url": "../static/img/bark.webp"},
+            "pushdeer": {"name": "PushDeer", "img_url": "../static/img/pushdeer.png"},
             "pushplus": {"name": "PushPlus", "img_url": "../static/img/pushplus.jpg"},
-            "iyuu": {"name": "IyuuMsg", "img_url": "../static/img/iyuu.png"}
+            "iyuu": {"name": "爱语飞飞", "img_url": "../static/img/iyuu.png"},
+            "slack": {"name": "Slack", "img_url": "../static/img/slack.png", "search_type": SearchType.SLACK},
+            "gotify": {"name": "Gotify", "img_url": "../static/img/gotify.png"},
         },
         "switch": {
             "download_start": {"name": "新增下载", "fuc_name": "download_start"},
@@ -53,13 +56,14 @@ class Message:
         self.dbhelper = DbHelper()
         self.messagecenter = MessageCenter()
         self._domain = Config().get_domain()
-        # 初始化消息客户端
+        # 停止旧服务
         if self._active_clients:
             for active_client in self._active_clients:
-                if active_client.get("search_type") == SearchType.TG:
-                    tg_client = active_client.get("client")
-                    if tg_client:
-                        tg_client.enabled = False
+                if active_client.get("search_type") in [SearchType.TG, SearchType.SLACK]:
+                    client = active_client.get("client")
+                    if client:
+                        client.stop_service()
+        # 初始化消息客户端
         self._active_clients = []
         self._client_configs = {}
         for client_config in self.dbhelper.get_message_client() or []:
@@ -84,7 +88,7 @@ class Message:
             self._active_clients.append({
                 "name": name,
                 "type": ctype,
-                "search_type": self.MESSAGE_DICT.get('channel').get(ctype, {}).get('search_type'),
+                "search_type": self.MESSAGE_DICT.get('client').get(ctype, {}).get('search_type'),
                 "client": self.__build_client(ctype, config, interactive),
                 "config": config,
                 "switchs": switchs,
@@ -104,10 +108,16 @@ class Message:
             return ServerChan(conf)
         elif ctype == "bark":
             return Bark(conf)
+        elif ctype == "pushdeer":
+            return PushDeerClient(conf)
         elif ctype == "pushplus":
             return PushPlus(conf)
         elif ctype == "iyuu":
             return IyuuMsg(conf)
+        elif ctype == "slack":
+            return Slack(conf, interactive)
+        elif ctype == "gotify":
+            return Gotify(conf)
         else:
             return None
 
@@ -130,10 +140,11 @@ class Message:
         """
         if not client or not client.get('client'):
             return None
-        log.info(f"【Message】发送{client.get('type')}消息服务{client.get('name')}：title={title}, text={text}")
+        cname = client.get('name')
+        log.info(f"【Message】发送消息 {cname}：title={title}, text={text}")
         if self._domain:
             if url:
-                if not url.startswith(self._domain):
+                if not url.startswith("http"):
                     url = "%s?next=%s" % (self._domain, url)
             else:
                 url = self._domain
@@ -145,7 +156,7 @@ class Message:
                                                        url=url,
                                                        user_id=user_id)
         if not state:
-            log.error("【Message】发送消息失败：%s" % ret_msg)
+            log.error(f"【Message】{cname} 消息发送失败：%s" % ret_msg)
         return state
 
     def send_channel_msg(self, channel, title, text="", image="", url="", user_id=""):
@@ -200,7 +211,7 @@ class Message:
                                                       medias=medias,
                                                       user_id=user_id)
                 if not state:
-                    log.error("【Message】发送消息失败：%s" % ret_msg)
+                    log.error(f"【Message】{client.get('name')} 发送消息失败：%s" % ret_msg)
                 return state
         return False
 
@@ -212,7 +223,7 @@ class Message:
         :return: 发送状态、错误信息
         """
         msg_title = f"{can_item.get_title_ep_string()} 开始下载"
-        msg_text = f"{can_item.get_vote_string()}"
+        msg_text = f"{can_item.get_star_string()}"
         msg_text = f"{msg_text}\n来自：{in_from.value}"
         if can_item.user_name:
             msg_text = f"{msg_text}\n用户：{can_item.user_name}"
@@ -325,7 +336,7 @@ class Message:
         发送下载失败的消息
         """
         title = "添加下载任务失败：%s %s" % (item.get_title_string(), item.get_season_episode_string())
-        text = f"种子：{item.org_string}\n错误信息：{error_msg}"
+        text = f"站点：{item.site}\n种子名称：{item.org_string}\n种子链接：{item.enclosure}\n错误信息：{error_msg}"
         # 插入消息中心
         self.messagecenter.insert_system_message(level="INFO", title=title, content=text)
         # 发送消息
@@ -433,7 +444,7 @@ class Message:
         """
         if not path or not count:
             return
-        title = f"【{count} 个文件转移失败】"
+        title = f"【{count} 个文件入库失败】"
         text = f"源路径：{path}\n原因：{text}"
         # 插入消息中心
         self.messagecenter.insert_system_message(level="INFO", title=title, content=text)
@@ -443,7 +454,8 @@ class Message:
                 self.__sendmsg(
                     client=client,
                     title=title,
-                    text=text
+                    text=text,
+                    url="unidentification"
                 )
 
     def send_brushtask_remove_message(self, title, text):
@@ -460,7 +472,8 @@ class Message:
                 self.__sendmsg(
                     client=client,
                     title=title,
-                    text=text
+                    text=text,
+                    url="brushtask"
                 )
 
     def send_brushtask_added_message(self, title, text):
@@ -477,7 +490,8 @@ class Message:
                 self.__sendmsg(
                     client=client,
                     title=title,
-                    text=text
+                    text=text,
+                    url="brushtask"
                 )
 
     def send_mediaserver_message(self, title, text, image):
@@ -506,14 +520,21 @@ class Message:
             return self._client_configs.get(str(cid))
         return self._client_configs
 
-    def get_interactive_client(self):
+    def get_interactive_client(self, client_type=None):
         """
         查询当前可以交互的渠道
         """
-        for client in self._active_clients:
-            if client.get('interactive'):
-                return client
-        return {}
+        if client_type:
+            for client in Message().get_interactive_client():
+                if client.get("search_type") == client_type:
+                    return client
+            return None
+        else:
+            ret_clients = []
+            for client in self._active_clients:
+                if client.get('interactive'):
+                    ret_clients.append(client)
+            return ret_clients
 
     def get_status(self, ctype=None, config=None):
         """
@@ -521,4 +542,12 @@ class Message:
         """
         if not config or not ctype:
             return False
-        return self.__build_client(ctype, config).get_status()
+        # 测试状态不启动监听服务
+        state, ret_msg = self.__build_client(ctype=ctype,
+                                             conf=config,
+                                             interactive=False).send_msg(title="测试",
+                                                                         text="这是一条测试消息",
+                                                                         url="https://github.com/jxxghp/nas-tools")
+        if not state:
+            log.error(f"【Message】{ctype} 发送测试消息失败：%s" % ret_msg)
+        return state

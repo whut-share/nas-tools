@@ -1,22 +1,23 @@
 import re
 import sys
 import time
-import traceback
+import pytz
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import log
-from app.downloader import Qbittorrent, Transmission
+from app.downloader.client import Qbittorrent, Transmission
 from app.filter import Filter
 from app.helper import DbHelper, DictHelper
 from app.message import Message
 from app.rss import Rss
 from app.sites import Sites
-from app.utils import StringUtils
+from app.utils import StringUtils, Torrent
 from app.utils.commons import singleton
+from app.utils.exception_utils import ExceptionUtils
 from app.utils.types import BrushDeleteType, SystemDictType
-from config import BRUSH_REMOVE_TORRENTS_INTERVAL
+from config import BRUSH_REMOVE_TORRENTS_INTERVAL, Config
 
 
 @singleton
@@ -47,7 +48,7 @@ class BrushTask(object):
                 self._scheduler.shutdown()
                 self._scheduler = None
         except Exception as e:
-            print(str(e))
+            ExceptionUtils.exception_traceback(e)
         # 读取下载器列表
         downloaders = self.dbhelper.get_user_downloaders()
         self._downloader_infos = []
@@ -70,7 +71,7 @@ class BrushTask(object):
             return
         # 启动RSS任务
         task_flag = False
-        self._scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
+        self._scheduler = BackgroundScheduler(timezone=Config().get_timezone())
         for task in self._brush_tasks:
             if task.get("state") == "Y" and task.get("interval") and str(task.get("interval")).isdigit():
                 task_flag = True
@@ -243,7 +244,7 @@ class BrushTask(object):
                                                        downloadercfg=downloader_cfg):
                         break
             except Exception as err:
-                log.console(str(err) + " - " + traceback.format_exc())
+                ExceptionUtils.exception_traceback(err)
                 continue
         log.info("【Brush】任务 %s 本次添加了 %s 个下载" % (task_name, success_count))
 
@@ -309,7 +310,9 @@ class BrushTask(object):
                         # 已开始时间 秒
                         dltime = int(time.time() - torrent.get("added_on"))
                         # 已做种时间 秒
-                        seeding_time = torrent.get('seeding_time') or 0
+                        date_done = torrent.completion_on if torrent.completion_on > 0 else torrent.added_on
+                        date_now = int(time.mktime(datetime.now().timetuple()))
+                        seeding_time = date_now - date_done if date_done else 0
                         # 分享率
                         ratio = torrent.get("ratio") or 0
                         # 上传量
@@ -383,9 +386,10 @@ class BrushTask(object):
                         # ID
                         torrent_id = torrent.id
                         # 做种时间
-                        date_done = torrent.date_done if torrent.date_done else torrent.date_added
-                        dltime = (datetime.now().astimezone() - torrent.date_added).seconds
-                        seeding_time = (datetime.now().astimezone() - date_done).seconds
+                        date_done = torrent.date_done or torrent.date_added
+                        date_now = int(time.mktime(datetime.now().timetuple()))
+                        dltime = date_now - int(time.mktime(torrent.date_added.timetuple()))
+                        seeding_time = date_now - int(time.mktime(date_done.timetuple()))
                         # 下载量
                         downloaded = int(torrent.total_size * torrent.progress / 100)
                         total_downloaded += downloaded
@@ -462,7 +466,7 @@ class BrushTask(object):
                                                          download_size=total_downloaded,
                                                          remove_count=len(delete_ids) + len(remove_torrent_ids))
             except Exception as e:
-                log.console(str(e) + " - " + traceback.format_exc())
+                ExceptionUtils.exception_traceback(e)
 
     def __is_allow_new_torrent(self, taskid, taskname, downloadercfg, seedsize, dlcount):
         """
@@ -551,7 +555,7 @@ class BrushTask(object):
         :param taskname: 任务名称
         :param site_id: 站点ID
         """
-        if not downloadercfg:
+        if not downloadercfg or not enclosure:
             return False
         # 标签
         tag = "已整理" if not transfer else None
@@ -559,54 +563,62 @@ class BrushTask(object):
         download_id = None
         # 查询站点信息
         site_info = self.sites.get_sites(siteid=site_id)
-        # 添加下载
-        if downloadercfg.get("type") == self._qb_client:
-            # 初始化下载器
-            downloader = Qbittorrent(user_config=downloadercfg)
-            if not downloader.qbc:
-                log.error("【Brush】任务 %s 下载器 %s 无法连接" % (taskname, downloadercfg.get("name")))
-                return False
-            torrent_tag = "NT" + StringUtils.generate_random_str(5)
-            if tag:
-                tag = [tag, torrent_tag]
+        # 下载种子文件
+        _, content, _, _, retmsg = Torrent().get_torrent_info(
+            url=enclosure,
+            cookie=site_info.get("cookie"),
+            ua=site_info.get("ua"))
+        if content:
+            # 添加下载
+            if downloadercfg.get("type") == self._qb_client:
+                # 初始化下载器
+                downloader = Qbittorrent(user_config=downloadercfg)
+                if not downloader.qbc:
+                    log.error("【Brush】任务 %s 下载器 %s 无法连接" % (taskname, downloadercfg.get("name")))
+                    return False
+                torrent_tag = "NT" + StringUtils.generate_random_str(5)
+                if tag:
+                    tags = [tag, torrent_tag]
+                else:
+                    tags = torrent_tag
+                ret = downloader.add_torrent(content=content,
+                                             tag=tags,
+                                             download_dir=downloadercfg.get("save_dir"),
+                                             upload_limit=upspeed,
+                                             download_limit=downspeed)
+                if ret:
+                    # QB添加下载后需要时间，重试5次每次等待5秒
+                    download_id = downloader.get_torrent_id_by_tag(torrent_tag)
+                    if download_id:
+                        # 开始下载
+                        downloader.start_torrents(download_id)
+                        # 强制做种
+                        if forceupload:
+                            downloader.torrents_set_force_start(download_id)
             else:
-                tag = torrent_tag
-            ret = downloader.add_torrent(content=enclosure,
-                                         tag=tag,
-                                         download_dir=downloadercfg.get("save_dir"),
-                                         upload_limit=upspeed,
-                                         download_limit=downspeed,
-                                         cookie=site_info.get("cookie"))
-            if ret:
-                # QB添加下载后需要时间，重试5次每次等待5秒
-                download_id = downloader.get_torrent_id_by_tag(tag)
-                if download_id:
-                    # 开始下载
-                    downloader.start_torrents(download_id)
-                    # 强制做种
-                    if forceupload:
-                        downloader.torrents_set_force_start(download_id)
-        else:
-            # 初始化下载器
-            downloader = Transmission(user_config=downloadercfg)
-            if not downloader.trc:
-                log.error("【Brush】任务 %s 下载器 %s 无法连接" % (taskname, downloadercfg.get("name")))
-                return False
-            ret = downloader.add_torrent(content=enclosure,
-                                         download_dir=downloadercfg.get("save_dir"),
-                                         upload_limit=upspeed,
-                                         download_limit=downspeed,
-                                         cookie=site_info.get("cookie")
-                                         )
-            if ret:
-                download_id = ret.id
-                # 设置标签
-                if download_id and tag:
-                    downloader.set_torrent_tag(tid=download_id, tag=tag)
+                # 初始化下载器
+                downloader = Transmission(user_config=downloadercfg)
+                if not downloader.trc:
+                    log.error("【Brush】任务 %s 下载器 %s 无法连接" % (taskname, downloadercfg.get("name")))
+                    return False
+                ret = downloader.add_torrent(content=content,
+                                             download_dir=downloadercfg.get("save_dir"),
+                                             upload_limit=upspeed,
+                                             download_limit=downspeed
+                                             )
+                if ret:
+                    download_id = ret.id
+                    # 设置标签
+                    if download_id and tag:
+                        downloader.set_torrent_tag(tid=download_id, tag=tag)
         if not download_id:
-            log.warn("【Brush】%s 添加下载任务出错，可能原因：Cookie过期/任务已存在/触发了站点首次种子下载" % title)
+            # 下载失败
+            log.warn(f"【Brush】{taskname} 添加下载任务出错：{title}，"
+                     f"错误原因：{retmsg or '下载器添加任务失败'}，"
+                     f"种子链接：{enclosure}")
             return False
         else:
+            # 下载成功
             log.info("【Brush】成功添加下载：%s" % title)
             if sendmessage:
                 msg_title = "【刷流任务 {} 新增下载】".format(taskname)
@@ -686,14 +698,17 @@ class BrushTask(object):
             # 检查免费状态
             if rss_rule.get("free") == "FREE":
                 if not torrent_attr.get("free"):
+                    log.debug("【Brush】不是一个FREE资源，跳过")
                     return False
             elif rss_rule.get("free") == "2XFREE":
                 if not torrent_attr.get("2xfree"):
+                    log.debug("【Brush】不是一个2XFREE资源，跳过")
                     return False
 
             # 检查HR状态
             if rss_rule.get("hr"):
                 if torrent_attr.get("hr"):
+                    log.debug("【Brush】这是一个H&R资源，跳过")
                     return False
 
             # 检查做种人数
@@ -731,11 +746,16 @@ class BrushTask(object):
             if rss_rule.get("pubdate") and pubdate:
                 rule_pubdates = rss_rule.get("pubdate").split("#")
                 if len(rule_pubdates) >= 2 and rule_pubdates[1]:
-                    if (datetime.now() - pubdate).seconds / 3600 > float(rule_pubdates[1]):
+                    localtz = pytz.timezone(Config().get_timezone())
+                    localnowtime = datetime.now().astimezone(localtz)
+                    localpubdate = pubdate.astimezone(localtz)
+                    log.debug('【Brush】发布时间：%s，当前时间：%s' % (localpubdate.isoformat(), localnowtime.isoformat()))
+                    if (localnowtime - localpubdate).seconds / 3600 > float(rule_pubdates[1]):
+                        log.debug("【Brush】发布时间不符合条件。")
                         return False
 
         except Exception as err:
-            log.error(str(err) + " - " + traceback.format_exc())
+            ExceptionUtils.exception_traceback(err)
 
         return True
 
@@ -784,5 +804,5 @@ class BrushTask(object):
                         if float(avg_upspeed) < float(rule_avg_upspeeds[1]) * 1024:
                             return True, BrushDeleteType.AVGUPSPEED
         except Exception as err:
-            log.console(str(err) + " - " + traceback.format_exc())
+            ExceptionUtils.exception_traceback(err)
         return False, BrushDeleteType.NOTDELETE

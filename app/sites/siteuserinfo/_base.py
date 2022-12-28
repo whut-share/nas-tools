@@ -9,12 +9,18 @@ import requests
 from lxml import etree
 
 import log
+from app.helper import SiteHelper
 from app.utils import RequestUtils
+from app.utils.types import SiteSchema
+
+SITE_BASE_ORDER = 1000
 
 
-class ISiteUserInfo(metaclass=ABCMeta):
+class _ISiteUserInfo(metaclass=ABCMeta):
     # 站点模版
-    _site_schema = None
+    schema = SiteSchema.NexusPhp
+    # 站点解析时判断顺序，值越小越先解析
+    order = SITE_BASE_ORDER
 
     def __init__(self, site_name, url, site_cookie, index_html, session=None, ua=None):
         super().__init__()
@@ -84,9 +90,18 @@ class ISiteUserInfo(metaclass=ABCMeta):
     def site_schema(self):
         """
         站点解析模型
-        :return:
+        :return: 站点解析模型
         """
-        return self._site_schema
+        return self.schema
+
+    @classmethod
+    def match(cls, html_text):
+        """
+        是否匹配当前解析模型
+        :param html_text: 站点首页html
+        :return: 是否匹配
+        """
+        return False
 
     def parse(self):
         """
@@ -94,6 +109,9 @@ class ISiteUserInfo(metaclass=ABCMeta):
         :return:
         """
         self._parse_favicon(self._index_html)
+        if not self._parse_logged_in(self._index_html):
+            return
+
         self._parse_site_page(self._index_html)
         self._parse_user_base_info(self._index_html)
         self._pase_unread_msgs()
@@ -244,6 +262,19 @@ class ISiteUserInfo(metaclass=ABCMeta):
         :return:
         """
         pass
+
+    def _parse_logged_in(self, html_text):
+        """
+        解析用户是否已经登陆
+        :param html_text:
+        :return: True/False
+        """
+        logged_in = SiteHelper.is_logged_in(html_text)
+        if not logged_in:
+            self.err_msg = "未检测到已登陆，请检查cookies是否过期"
+            log.warn(f"【Sites】{self.site_name} 未登录，跳过后续操作")
+
+        return logged_in
 
     @abstractmethod
     def _parse_user_traffic_info(self, html_text):

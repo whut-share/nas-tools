@@ -140,6 +140,10 @@ class DOUBANMEDIAS(Base):
     RATING = Column(Text)
     IMAGE = Column(Text)
     STATE = Column(Text)
+    ADD_TIME = Column(Text)
+
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 class DOWNLOADHISTORY(Base):
@@ -392,6 +396,9 @@ class SITEBRUSHTORRENTS(Base):
     DOWNLOAD_ID = Column(Text)
     LST_MOD_DATE = Column(Text)
 
+    def as_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 class SITESTATISTICSHISTORY(Base):
     __tablename__ = 'SITE_STATISTICS_HISTORY'
@@ -434,9 +441,16 @@ class SITEUSERINFOSTATS(Base):
     SEEDING_SIZE = Column(Integer)
     BONUS = Column(Float)
     URL = Column(Text, unique=True)
-    FAVICON = Column(Text)
     MSG_UNREAD = Column(Integer)
     EXT_INFO = Column(Text)
+
+
+class SITEFAVICON(Base):
+    __tablename__ = 'SITE_FAVICON'
+
+    SITE = Column(Text, primary_key=True)
+    URL = Column(Text)
+    FAVICON = Column(Text)
 
 
 class SITEUSERSEEDINGINFO(Base):

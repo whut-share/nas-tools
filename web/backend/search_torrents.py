@@ -3,18 +3,18 @@ import re
 import cn2an
 
 import log
-from app.indexer import Prowlarr, Jackett, BuiltinIndexer
-from app.sites import Sites
-from config import Config
-from app.message import Message
-from app.media.douban import DouBan
 from app.downloader import Downloader
-from app.searcher import Searcher
-from app.utils import StringUtils
-from app.media import MetaInfo, Media
 from app.helper import DbHelper, ProgressHelper
-from app.utils.types import SearchType, MediaType
+from app.indexer import Indexer
+from app.media import MetaInfo, Media
+from app.media.douban import DouBan
+from app.message import Message
+from app.searcher import Searcher
+from app.sites import Sites
 from app.subscribe import Subscribe
+from app.utils import StringUtils
+from app.utils.types import SearchType, MediaType, IndexerType
+from config import Config
 
 SEARCH_MEDIA_CACHE = {}
 SEARCH_MEDIA_TYPE = {}
@@ -105,10 +105,9 @@ def search_medias_for_web(content, ident_flag=True, filters=None, tmdbid=None, m
                 if media_info.original_language == "en":
                     search_en_name = media_info.original_title
                 else:
-                    en_info = Media().get_tmdb_info(mtype=media_info.type, tmdbid=media_info.tmdb_id, language="en-US")
-                    if en_info:
-                        search_en_name = en_info.get("title") if media_info.type == MediaType.MOVIE else en_info.get(
-                            "name")
+                    en_title = Media().get_tmdb_en_title(media_info)
+                    if en_title:
+                        search_en_name = en_title
             # 两次搜索名称
             second_search_name = None
             if Config().get_config("laboratory").get("search_en_title"):
@@ -150,7 +149,6 @@ def search_medias_for_web(content, ident_flag=True, filters=None, tmdbid=None, m
     log.info("【Web】开始检索 %s ..." % content)
     media_list = Searcher().search_medias(key_word=first_search_name,
                                           filter_args=filter_args,
-                                          match_type=1 if ident_flag else 2,
                                           match_media=media_info,
                                           in_from=SearchType.WEB)
     # 使用第二名称重新搜索
@@ -164,7 +162,6 @@ def search_medias_for_web(content, ident_flag=True, filters=None, tmdbid=None, m
         log.info("【Searcher】%s 未检索到资源,尝试通过 %s 重新检索 ..." % (first_search_name, second_search_name))
         media_list = Searcher().search_medias(key_word=second_search_name,
                                               filter_args=filter_args,
-                                              match_type=1,
                                               match_media=media_info,
                                               in_from=SearchType.WEB)
     # 清空缓存结果
@@ -253,6 +250,7 @@ def search_media_by_message(input_str, in_from: SearchType, user_id, user_name=N
             SEARCH_MEDIA_TYPE[user_id] = "SUBSCRIBE"
             input_str = re.sub(r"订阅[:：\s]*", "", input_str)
         else:
+            input_str = re.sub(r"[搜索|下载][:：\s]*", "", input_str)
             SEARCH_MEDIA_TYPE[user_id] = "SEARCH"
 
         # 去掉查询中的电影或电视剧关键字
@@ -266,16 +264,11 @@ def search_media_by_message(input_str, in_from: SearchType, user_id, user_name=N
                                                                 } for site in Sites().get_sites(rss=True)])
 
         # 索引器类型
-        indexer_type = Config().get_config("pt").get("search_indexer")
-        if indexer_type == "prowlarr":
-            indexers = Prowlarr().get_indexers()
-        elif indexer_type == "jackett":
-            indexers = Jackett().get_indexers()
-        else:
-            indexers = BuiltinIndexer().get_indexers()
+        indexer_type = Indexer().get_client_type()
+        indexers = Indexer().get_indexers()
 
         # 获取字符串中可能的搜索站点列表
-        if indexer_type == "builtin":
+        if indexer_type == IndexerType.BUILTIN.value:
             search_sites, _ = StringUtils.get_idlist_from_string(org_content, [{
                 "id": indexer.name,
                 "name": indexer.name
@@ -365,6 +358,7 @@ def search_media_by_message(input_str, in_from: SearchType, user_id, user_name=N
                                            title=media_info.get_title_vote_string(),
                                            text=media_info.get_overview_string(),
                                            image=media_info.get_message_image(),
+                                           url=media_info.get_detail_url(),
                                            user_id=user_id)
                 # 开始搜索
                 __search_media(in_from=in_from,
@@ -464,12 +458,12 @@ def __rss_media(in_from, media_info, user_id=None, state='D', user_name=None):
                                                               search_sites=media_info.search_sites)
     if code == 0:
         log.info("【Web】%s %s 已添加订阅" % (media_info.type.value, media_info.get_title_string()))
-        if in_from in [SearchType.WX, SearchType.TG]:
+        if in_from in [SearchType.WX, SearchType.TG, SearchType.SLACK]:
             media_info.user_name = user_name
             Message().send_rss_success_message(in_from=in_from,
                                                media_info=media_info)
     else:
-        if in_from in [SearchType.WX, SearchType.TG]:
+        if in_from in [SearchType.WX, SearchType.TG, SearchType.SLACK]:
             log.info("【Web】%s 添加订阅失败：%s" % (media_info.title, msg))
             Message().send_channel_msg(channel=in_from,
                                        title="%s 添加订阅失败：%s" % (media_info.title, msg),

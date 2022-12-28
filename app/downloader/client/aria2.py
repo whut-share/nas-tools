@@ -2,9 +2,10 @@ import os
 import re
 
 from app.utils import RequestUtils
+from app.utils.exception_utils import ExceptionUtils
 from app.utils.types import DownloaderType
 from config import Config
-from app.downloader.client.client import IDownloadClient
+from app.downloader.download_client import IDownloadClient
 from app.downloader.client.pyaria2 import PyAria2
 
 
@@ -93,7 +94,7 @@ class Aria2(IDownloadClient):
                     if p and p.headers.get("Location"):
                         content = p.headers.get("Location")
                 except Exception as result:
-                    print(str(result))
+                    ExceptionUtils.exception_traceback(result)
             return self._client.addUri(uris=[content], options=dict(dir=download_dir))
         else:
             return self._client.addTorrent(torrent=content, uris=[], options=dict(dir=download_dir))

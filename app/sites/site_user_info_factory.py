@@ -1,25 +1,33 @@
-import time
-
 import requests
-from lxml import etree
 
 import log
-from app.helper import ChromeHelper, CHROME_LOCK
-from app.sites.siteuserinfo.discuz import DiscuzUserInfo
-from app.sites.siteuserinfo.gazelle import GazelleSiteUserInfo
-from app.sites.siteuserinfo.ipt_project import IptSiteUserInfo
-from app.sites.siteuserinfo.nexus_php import NexusPhpSiteUserInfo
-from app.sites.siteuserinfo.nexus_project import NexusProjectSiteUserInfo
-from app.sites.siteuserinfo.nexus_rabbit import NexusRabbitSiteUserInfo
-from app.sites.siteuserinfo.small_horse import SmallHorseSiteUserInfo
-from app.sites.siteuserinfo.unit3d import Unit3dSiteUserInfo
+from app.helper import ChromeHelper, SubmoduleHelper
 from app.utils import RequestUtils
+from app.utils.commons import singleton
+from app.utils.exception_utils import ExceptionUtils
 from config import Config
 
 
+@singleton
 class SiteUserInfoFactory(object):
-    @staticmethod
-    def build(url, site_name, site_cookie=None, ua=None, emulate=None, proxy=False):
+
+    def __init__(self):
+        self.__site_schema = SubmoduleHelper.import_submodules('app.sites.siteuserinfo',
+                                                               filter_func=lambda _, obj: hasattr(obj, 'schema'))
+        self.__site_schema.sort(key=lambda x: x.order)
+        print(f"【Sites】: 已经加载的站点解析 {self.__site_schema}")
+
+    def _build_class(self, html_text):
+        for site_schema in self.__site_schema:
+            try:
+                if site_schema.match(html_text):
+                    return site_schema
+            except Exception as e:
+                ExceptionUtils.exception_traceback(e)
+
+        return None
+
+    def build(self, url, site_name, site_cookie=None, ua=None, emulate=None, proxy=False):
         if not site_cookie:
             return None
         log.debug(f"【Sites】站点 {site_name} url={url} site_cookie={site_cookie} ua={ua}")
@@ -27,20 +35,16 @@ class SiteUserInfoFactory(object):
         # 检测环境，有浏览器内核的优先使用仿真签到
         chrome = ChromeHelper()
         if emulate and chrome.get_status():
-            with CHROME_LOCK:
-                try:
-                    chrome.visit(url=url, ua=ua, cookie=site_cookie)
-                except Exception as err:
-                    print(str(err))
-                    log.error("【Sites】%s 无法打开网站" % site_name)
-                    return None
-                # 循环检测是否过cf
-                cloudflare = chrome.pass_cloudflare()
-                if not cloudflare:
-                    log.error("【Sites】%s 跳转站点失败" % site_name)
-                    return None
-                # 判断是否已签到
-                html_text = chrome.get_html()
+            if not chrome.visit(url=url, ua=ua, cookie=site_cookie):
+                log.error("【Sites】%s 无法打开网站" % site_name)
+                return None
+            # 循环检测是否过cf
+            cloudflare = chrome.pass_cloudflare()
+            if not cloudflare:
+                log.error("【Sites】%s 跳转站点失败" % site_name)
+                return None
+            # 判断是否已签到
+            html_text = chrome.get_html()
         else:
             proxies = Config().get_proxies() if proxy else None
             res = RequestUtils(cookies=site_cookie,
@@ -93,39 +97,15 @@ class SiteUserInfoFactory(object):
                         html_text = res.text
                         if not html_text:
                             return None
-            elif not res:
-                log.error("【Sites】站点 %s 连接失败：%s" % (site_name, url))
+            elif res is not None:
+                log.error(f"【Sites】站点 {site_name} 连接失败，状态码：{res.status_code}")
                 return None
             else:
-                log.error("【Sites】站点 %s 获取流量数据失败，状态码：%s" % (site_name, res.status_code))
+                log.error(f"【Sites】站点 {site_name} 无法访问：{url}")
                 return None
-
-        # 解析站点代码
-        html = etree.HTML(html_text)
-        printable_text = html.xpath("string(.)") if html else ""
-
-        if "Powered by Gazelle" in printable_text:
-            return GazelleSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-
-        if "Style by Rabbit" in printable_text:
-            return NexusRabbitSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-
-        if "Powered by Discuz!" in printable_text:
-            return DiscuzUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-
-        if "unit3d.js" in html_text:
-            return Unit3dSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-
-        if "NexusPHP" in html_text:
-            return NexusPhpSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-
-        if "Nexus Project" in html_text:
-            return NexusProjectSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-
-        if "Small Horse" in html_text:
-            return SmallHorseSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-
-        if "IPTorrents" in html_text:
-            return IptSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
-        # 默认NexusPhp
-        return NexusPhpSiteUserInfo(site_name, url, site_cookie, html_text, session=session, ua=ua)
+        # 解析站点类型
+        site_schema = self._build_class(html_text)
+        if not site_schema:
+            log.error("【Sites】站点 %s 无法识别站点类型" % site_name)
+            return None
+        return site_schema(site_name, url, site_cookie, html_text, session=session, ua=ua)

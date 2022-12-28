@@ -186,7 +186,7 @@
                 <div class="datagrid-content">
                   {% if Attr.config.qb_category %}
                   {% for Category in Attr.config.qb_category %}
-                  <span class="badge me-2">{{ Category }}</span>
+                  <span class="badge me-2 mb-1">{{ Category }}</span>
                   {% endfor %}
                   {% endif %}
                 </div>
@@ -196,7 +196,7 @@
                 <div class="datagrid-content">
                   {% if Attr.config.qb_state %}
                   {% for State in Attr.config.qb_state %}
-                  <span class="badge me-2 bg-blue">{{ State }}</span>
+                  <span class="badge me-2 bg-blue mb-1">{{ State }}</span>
                   {% endfor %}
                   {% endif %}
                 </div>
@@ -215,7 +215,7 @@
                 <div class="datagrid-content">
                   {% if Attr.config.tr_state %}
                   {% for State in Attr.config.tr_state %}
-                  <span class="badge me-2 bg-blue">{{ State }}</span>
+                  <span class="badge me-2 bg-blue mb-1">{{ State }}</span>
                   {% endfor %}
                   {% endif %}
                 </div>
@@ -236,7 +236,7 @@
               <div class="datagrid-content">
                 {% if Attr.config.tags %}
                 {% for Tag in Attr.config.tags %}
-                <span class="badge me-2">{{ Tag }}</span>
+                <span class="badge me-2 mb-1">{{ Tag }}</span>
                 {% endfor %}
                 {% endif %}
               </div>
@@ -264,7 +264,7 @@
 {% endif %}
 <div class="modal modal-blur fade" id="modal-torrent-remove-task" tabindex="-1" role="dialog" aria-hidden="true"
   data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="modal-torrent-remove-task-title">新增删种任务</h5>
@@ -302,8 +302,8 @@
             <div class="mb-3">
               <label class="form-label">状态</label>
               <select class="form-select" id="enabled">
-                <option value="0" selected>停用</option>
                 <option value="1">启用</option>
+                <option value="0" selected>停用</option>
               </select>
             </div>
           </div>
@@ -319,7 +319,7 @@
           </div>
           <div class="col-lg-4">
             <div class="mb-3">
-              <label class="form-label">只管理NASTool添加的下载 <span class="form-help" title="只管理含有NASTOOL标签的种子"
+              <label class="form-label">只管理NAStool添加的下载 <span class="form-help" title="只管理含有NASTOOL标签的种子"
                   data-bs-toggle="tooltip">?</span></label>
               <select class="form-select" id="onlynastool">
                 <option value="0">否</option>
@@ -478,11 +478,7 @@
 <script type="text/javascript">
   // 折叠任务详情
   function show_torrent_remove_task_detail(tid) {
-    if ($(`#detail_${tid}`)[0].style["display"] == "none") {
-      $(`#detail_${tid}`).attr("style", "display: block;");
-    } else {
-      $(`#detail_${tid}`).attr("style", "display: none;");
-    };
+    $(`#detail_${tid}`).slideToggle();
   }
 
   // 显示新增任务

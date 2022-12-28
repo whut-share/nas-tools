@@ -9,7 +9,6 @@ from config import Config
 
 
 class Torrent:
-
     _torrent_path = None
 
     def __init__(self):
@@ -24,22 +23,22 @@ class Torrent:
         :param cookie: 站点Cookie
         :param ua: 站点UserAgent
         :param referer: 关联地址，有的网站需要这个否则无法下载
-        :return: 种子保存路径、种子内容、种子文件列表、错误信息
+        :return: 种子保存路径、种子内容、种子文件列表主目录、种子文件列表、错误信息
         """
         if not url:
-            return None, None, [], "URL为空"
+            return None, None, "", [], "URL为空"
         if url.startswith("magnet:"):
-            return None, url, [], f"{url} 为磁力链接"
+            return None, url, "", [], f"{url} 为磁力链接"
         try:
             req = RequestUtils(headers=ua, cookies=cookie, referer=referer).get_res(url=url, allow_redirects=False)
             while req and req.status_code in [301, 302]:
                 url = req.headers['Location']
                 if url and url.startswith("magnet:"):
-                    return None, url, [], f"获取到磁力链接：{url}"
+                    return None, url, "", [], f"获取到磁力链接：{url}"
                 req = RequestUtils(headers=ua, cookies=cookie, referer=referer).get_res(url=url, allow_redirects=False)
             if req and req.status_code == 200:
                 if not req.content:
-                    return None, None, [], "未下载到种子数据"
+                    return None, None, "", [], "未下载到种子数据"
                 # 读取种子文件名
                 file_name = self.__get_url_torrent_name(req.headers.get('content-disposition'), url)
                 # 种子文件路径
@@ -47,15 +46,15 @@ class Torrent:
                 with open(file_path, 'wb') as f:
                     f.write(req.content)
                 # 解析种子文件
-                files, retmsg = self.__get_torrent_files(file_path)
-                # 种子文件路径、种子内容、种子文件列表、错误信息
-                return file_path, req.content, files, retmsg
+                files_folder, files, retmsg = self.__get_torrent_files(file_path)
+                # 种子文件路径、种子内容、种子文件列表主目录、种子文件列表、错误信息
+                return file_path, req.content, files_folder, files, retmsg
             elif req is None:
-                return None, None, [], "无法打开链接：%s" % url
+                return None, None, "", [], "无法打开链接：%s" % url
             else:
-                return None, None, [], "下载种子出错，状态码：%s" % req.status_code
+                return None, None, "", [], "下载种子出错，状态码：%s" % req.status_code
         except Exception as err:
-            return None, None, [], "下载种子文件出现异常：%s，请检查是否站点Cookie已过期，或触发了站点首次种子下载" % str(err)
+            return None, None, "", [], "下载种子文件出现异常：%s" % str(err)
 
     @staticmethod
     def convert_hash_to_magnet(hash_text, title):
@@ -64,59 +63,88 @@ class Torrent:
         :param hash_text: 种子Hash值
         :param title: 种子标题
         """
+        _trackers = [
+            "udp://tracker.cyberia.is:6969/announce",
+            "udp://tracker.port443.xyz:6969/announce",
+            "http://tracker3.itzmx.com:6961/announce",
+            "udp://tracker.moeking.me:6969/announce",
+            "http://vps02.net.orel.ru:80/announce",
+            "http://tracker.openzim.org:80/announce",
+            "udp://tracker.skynetcloud.tk:6969/announce",
+            "https://1.tracker.eu.org:443/announce",
+            "https://3.tracker.eu.org:443/announce",
+            "http://re-tracker.uz:80/announce",
+            "https://tracker.parrotsec.org:443/announce",
+            "udp://explodie.org:6969/announce",
+            "udp://tracker.filemail.com:6969/announce",
+            "udp://tracker.nyaa.uk:6969/announce",
+            "udp://retracker.netbynet.ru:2710/announce",
+            "http://tracker.gbitt.info:80/announce",
+            "http://tracker2.dler.org:80/announce",
+            "udp://tracker.openbittorrent.com:80/announce",
+            "udp://opentor.org:2710/announce",
+            "udp://tracker.ccc.de:80/announce",
+            "udp://tracker.blackunicorn.xyz:6969/announce",
+            "udp://tracker.leechers-paradise.org:6969/announce"
+        ]
+
         if not hash_text or not title:
             return None
         hash_text = re.search(r'[0-9a-z]+', hash_text, re.IGNORECASE)
         if not hash_text:
             return None
         hash_text = hash_text.group(0)
-        return f'magnet:?xt=urn:btih:{hash_text}&dn={quote(title)}&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A80' \
-               '&tr=udp%3A%2F%2Fopentor.org%3A2710' \
-               '&tr=udp%3A%2F%2Ftracker.ccc.de%3A80' \
-               '&tr=udp%3A%2F%2Ftracker.blackunicorn.xyz%3A6969' \
-               '&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969' \
-               '&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969'
+        ret_magnet = f'magnet:?xt=urn:btih:{hash_text}&dn={quote(title)}'
+        for tracker in _trackers:
+            ret_magnet = f'{ret_magnet}&tr={tracker}'
+        return ret_magnet
 
     @staticmethod
     def __get_torrent_files(path):
         """
         解析Torrent文件，获取文件清单
+        :return: 种子文件列表主目录、种子文件列表、错误信息
         """
         if not path or not os.path.exists(path):
-            return [], f"种子文件不存在：{path}"
+            return "", [], f"种子文件不存在：{path}"
         file_names = []
+        file_folder = ""
         try:
             torrent = TorrentParser().readFile(path=path)
             if torrent.get("torrent"):
-                name = torrent.get("torrent").get("info", {}).get("name")
+                file_folder = torrent.get("torrent").get("info", {}).get("name") or ""
                 files = torrent.get("torrent").get("info", {}).get("files") or []
-                if not files and name:
-                    file_names.append(name)
+                if not files and file_folder:
+                    file_names.append(file_folder)
                 else:
                     for item in files:
                         if item.get("path"):
                             file_names.append(item["path"][0])
         except Exception as err:
-            return file_names, "解析种子文件异常：%s" % str(err)
-        return file_names, ""
+            if str(err).find("Malformed integer element") != -1:
+                err_msg = "需手工在站点下载一次种子"
+            else:
+                err_msg = "解析种子文件异常：%s" % str(err)
+            return file_folder, file_names, err_msg
+        return file_folder, file_names, ""
 
     def read_torrent_file(self, path):
         """
         读取本地种子文件的内容
-        :return: 种子内容、种子文件列表、错误信息
+        :return: 种子内容、种子文件列表主目录、种子文件列表、错误信息
         """
         if not path or not os.path.exists(path):
-            return None, "种子文件不存在：%s" % path
-        content, retmsg, files = None, "", []
+            return None, "", "种子文件不存在：%s" % path
+        content, retmsg, file_folder, files = None, "", "", []
         try:
             # 读取种子文件内容
             with open(path, 'rb') as f:
                 content = f.read()
             # 解析种子文件
-            files, retmsg = self.__get_torrent_files(path)
+            file_folder, files, retmsg = self.__get_torrent_files(path)
         except Exception as e:
             retmsg = "读取种子文件出错：%s" % str(e)
-        return content, files, retmsg
+        return content, file_folder, files, retmsg
 
     @staticmethod
     def __get_url_torrent_name(disposition, url):

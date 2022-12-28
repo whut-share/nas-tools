@@ -1,11 +1,12 @@
 import re
-import traceback
 
-import anitopy
 import zhconv
 
-from app.utils import StringUtils
+import anitopy
 from app.media.meta.metabase import MetaBase
+from app.media.meta.release_groups import ReleaseGroupsMatcher
+from app.utils import StringUtils
+from app.utils.exception_utils import ExceptionUtils
 from app.utils.types import MediaType
 
 
@@ -22,6 +23,7 @@ class MetaAnime(MetaBase):
             return
         # 调用第三方模块识别动漫
         try:
+            original_title = title
             # 字幕组信息会被预处理掉
             anitopy_info_origin = anitopy.parse(title)
             title = self.__prepare_title(title)
@@ -109,12 +111,17 @@ class MetaAnime(MetaBase):
                     begin_episode = None
                     end_episode = None
                 if begin_episode:
-                    self.begin_episode = int(begin_episode)
-                    if end_episode and end_episode != self.begin_episode:
-                        self.end_episode = int(end_episode)
-                        self.total_episodes = (self.end_episode - self.begin_episode) + 1
-                    else:
-                        self.total_episodes = 1
+                    try:
+                        self.begin_episode = int(begin_episode)
+                        if end_episode and end_episode != self.begin_episode:
+                            self.end_episode = int(end_episode)
+                            self.total_episodes = (self.end_episode - self.begin_episode) + 1
+                        else:
+                            self.total_episodes = 1
+                    except Exception as err:
+                        ExceptionUtils.exception_traceback(err)
+                        self.begin_episode = None
+                        self.end_episode = None
                     self.type = MediaType.TV
                 # 类型
                 if not self.type:
@@ -134,8 +141,12 @@ class MetaAnime(MetaBase):
                         self.resource_pix = re.split(r'[Xx]', self.resource_pix)[-1] + "p"
                     else:
                         self.resource_pix = self.resource_pix.lower()
+                    if str(self.resource_pix).isdigit():
+                        self.resource_pix = str(self.resource_pix) + "p"
                 # 制作组/字幕组
-                self.resource_team = anitopy_info_origin.get("release_group")
+                self.resource_team = \
+                    anitopy_info_origin.get("release_group") or \
+                    ReleaseGroupsMatcher().match(title=original_title) or None
                 # 视频编码
                 self.video_encode = anitopy_info.get("video_term")
                 if isinstance(self.video_encode, list):
@@ -151,7 +162,7 @@ class MetaAnime(MetaBase):
             if not self.type:
                 self.type = MediaType.TV
         except Exception as e:
-            print("%s - %s " % (str(e), traceback.format_exc()))
+            ExceptionUtils.exception_traceback(e)
 
     @staticmethod
     def __prepare_title(title):
@@ -173,7 +184,7 @@ class MetaAnime(MetaBase):
         if first_item and re.search(r"[动漫画纪录片电影视连续剧集日美韩中港台海外亚洲华语大陆综艺原盘高清]{2,}|TV|Animation|Movie|Documentar|Anime",
                                     zhconv.convert(first_item, "zh-hans"),
                                     re.IGNORECASE):
-            title = re.sub(r"^[^]]*[]]", "", title).strip()
+            title = re.sub(r"^[^]]*]", "", title).strip()
         # 去掉大小
         title = re.sub(r'[0-9.]+\s*[MGT]i?B(?![A-Z]+)', "", title, flags=re.IGNORECASE)
         # 将TVxx改为xx

@@ -1,5 +1,6 @@
 import ipaddress
 
+from app.utils.exception_utils import ExceptionUtils
 from config import Config
 
 
@@ -18,6 +19,9 @@ class SecurityHelper:
 
     def check_telegram_ip(self, ip):
         return self.webhook_allow_access(self.telegram_webhook_allow_ip, ip)
+
+    def check_slack_ip(self, ip):
+        return self.webhook_allow_access({"ipve": "127.0.0.1"}, ip)
 
     @staticmethod
     def webhook_allow_access(allow_ips, ip):
@@ -47,5 +51,5 @@ class SecurityHelper:
                     if ipaddr in ipaddress.ip_network(allow_ipv6):
                         return True
         except Exception as e:
-            print(str(e))
+            ExceptionUtils.exception_traceback(e)
         return False

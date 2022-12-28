@@ -2,7 +2,7 @@ import os
 from threading import Lock
 
 import log
-from app.downloader import Aria2, Client115, Qbittorrent, Transmission
+from app.downloader.client import Aria2, Client115, Qbittorrent, Transmission
 from app.filetransfer import FileTransfer
 from app.helper import DbHelper, ThreadHelper
 from app.media import MetaInfo, Media
@@ -12,6 +12,7 @@ from app.sites import Sites
 from app.subtitle import Subtitle
 from app.utils import Torrent, StringUtils, SystemUtils
 from app.utils.commons import singleton
+from app.utils.exception_utils import ExceptionUtils
 from app.utils.types import MediaType, DownloaderType, SearchType, RmtMode, RMT_MODES
 from config import Config, PT_TAG, RMT_MEDIAEXT
 
@@ -150,7 +151,7 @@ class Downloader:
         if not url:
             return None, "Url链接为空"
         # 默认值
-        site_info, cookie, ua, dl_files = {}, None, None, []
+        site_info, cookie, ua, dl_files_folder, dl_files = {}, None, None, "", []
         # 下载设置
         if download_setting:
             download_attr = self.get_download_setting(download_setting)
@@ -165,9 +166,6 @@ class Downloader:
         _client = self.__get_client(downloader)
         # 获取种子内容，磁力链不解析
         if url.startswith("magnet:"):
-            content = url
-        # 这些下载器不解析
-        elif downloader in [DownloaderType.Client115]:
             content = url
         # HTTP协议偿试下载种子内容
         elif url.startswith("http"):
@@ -189,10 +187,10 @@ class Downloader:
                         return None, "%s 转换磁力链失败" % url
             if torrent_file:
                 # 已经下载过了种子文件，直接读取
-                content, dl_files, retmsg = Torrent().read_torrent_file(torrent_file)
+                content, dl_files_folder, dl_files, retmsg = Torrent().read_torrent_file(torrent_file)
             else:
                 # 下载种子文件，并读取信息
-                torrent_file, content, dl_files, retmsg = Torrent().get_torrent_info(
+                torrent_file, content, dl_files_folder, dl_files, retmsg = Torrent().get_torrent_info(
                     url=url,
                     cookie=cookie,
                     ua=ua,
@@ -296,16 +294,17 @@ class Downloader:
                     if visit_dir:
                         # 取种子文件的公共目录为下载目录
                         if len(dl_files) > 1:
-                            sub_dir = os.path.commonpath([os.path.join(visit_dir,
+                            sub_dir = os.path.commonpath([os.path.join(visit_dir, dl_files_folder,
                                                                        f) for f in dl_files])
                         else:
-                            sub_dir = os.path.dirname(os.path.join(visit_dir, dl_files[0]))
+                            sub_dir = os.path.dirname(os.path.join(visit_dir, dl_files_folder, dl_files[0]))
                         ThreadHelper().start_thread(Subtitle().download_subtitle_from_site,
                                                     (media_info, cookie, ua, sub_dir))
                 return ret, ""
             else:
                 return ret, "请检查下载任务是否已存在"
         except Exception as e:
+            ExceptionUtils.exception_traceback(e)
             log.error("【Downloader】添加下载任务出错：%s" % str(e))
             return None, str(e)
 
@@ -353,7 +352,9 @@ class Downloader:
             return []
         _client = self.__get_client(downloader)
         if config.get("onlynastool"):
-            config.get("tags").append(PT_TAG)
+            config["filter_tags"] = config["tags"] + [PT_TAG]
+        else:
+            config["filter_tags"] = config["tags"]
         torrents = _client.get_remove_torrents(config=config)
         torrents.sort(key=lambda x: x.get("name"))
         return torrents
@@ -372,7 +373,7 @@ class Downloader:
         try:
             return self._default_client_type, self.default_client.get_downloading_torrents(tag=tag)
         except Exception as err:
-            print(str(err))
+            ExceptionUtils.exception_traceback(err)
             return self._default_client_type, []
 
     def get_torrents(self, torrent_ids):
@@ -1003,10 +1004,10 @@ class Downloader:
         if not cookie:
             return [], None
         # 保存种子文件
-        file_path, _, files, retmsg = Torrent().get_torrent_info(url=url,
-                                                                 cookie=cookie,
-                                                                 ua=ua,
-                                                                 referer=page_url if referer else None)
+        file_path, _, _, files, retmsg = Torrent().get_torrent_info(url=url,
+                                                                    cookie=cookie,
+                                                                    ua=ua,
+                                                                    referer=page_url if referer else None)
         if not files:
             log.error("【Downloader】读取种子文件集数出错：%s" % retmsg)
             return [], None

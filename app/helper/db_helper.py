@@ -44,7 +44,12 @@ class DbHelper:
                 POSTER=media_item.get_poster_image(),
                 TMDBID=media_item.tmdb_id,
                 OVERVIEW=media_item.overview,
-                RES_TYPE=media_item.get_resource_type_string(),
+                RES_TYPE=json.dumps({
+                    "respix": media_item.resource_pix,
+                    "restype": media_item.resource_type,
+                    "reseffect": media_item.resource_effect,
+                    "video_encode": media_item.video_encode
+                }),
                 RES_ORDER=media_item.res_order,
                 SIZE=StringUtils.str_filesize(int(media_item.size)),
                 SEEDERS=media_item.seeders,
@@ -154,7 +159,8 @@ class DbHelper:
                 TYPE=media.type.value,
                 RATING=media.vote_average,
                 IMAGE=media.get_poster_image(),
-                STATE=state
+                STATE=state,
+                ADD_TIME=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
             )
         )
 
@@ -262,6 +268,20 @@ class DbHelper:
         """
         return self._db.query(TRANSFERHISTORY).filter(TRANSFERHISTORY.ID == int(logid)).all()
 
+    def is_transfer_history_exists_by_source_full_path(self, source_full_path):
+        """
+        据源文件的全路径查询识别转移记录
+        """
+
+        path = os.path.dirname(source_full_path)
+        filename = os.path.basename(source_full_path)
+        ret = self._db.query(TRANSFERHISTORY).filter(TRANSFERHISTORY.SOURCE_PATH == path,
+                                                     TRANSFERHISTORY.SOURCE_FILENAME == filename).count()
+        if ret > 0:
+            return True
+        else:
+            return False
+
     @DbPersist(_db)
     def delete_transfer_log_by_id(self, logid):
         """
@@ -305,6 +325,14 @@ class DbHelper:
             return []
         return self._db.query(TRANSFERUNKNOWN).filter(TRANSFERUNKNOWN.ID == int(tid)).all()
 
+    def get_transfer_unknown_by_path(self, path):
+        """
+        根据路径查询未识别记录
+        """
+        if not path:
+            return []
+        return self._db.query(TRANSFERUNKNOWN).filter(TRANSFERUNKNOWN.PATH == path).all()
+
     def is_transfer_unknown_exists(self, path):
         """
         查询未识别记录是否存在
@@ -316,6 +344,44 @@ class DbHelper:
             return True
         else:
             return False
+
+    def is_need_insert_transfer_unknown(self, path):
+        """
+        检查是否需要插入未识别记录
+        """
+        if not path:
+            return False
+
+        """
+        1) 如果不存在未识别，则插入
+        2) 如果存在未处理的未识别，则插入（并不会真正的插入，insert_transfer_unknown里会挡住，主要是标记进行消息推送）
+        3) 如果未识别已经全部处理完并且存在转移记录，则不插入
+        4) 如果未识别已经全部处理完并且不存在转移记录，则删除并重新插入
+        """
+        unknowns = self.get_transfer_unknown_by_path(path)
+        if unknowns:
+            is_all_proceed = True
+            for unknown in unknowns:
+                if unknown.STATE == 'N':
+                    is_all_proceed = False
+                    break
+
+            if is_all_proceed:
+                is_transfer_history_exists = self.is_transfer_history_exists_by_source_full_path(path)
+                if is_transfer_history_exists:
+                    # 对应 3)
+                    return False
+                else:
+                    # 对应 4)
+                    for unknown in unknowns:
+                        self.delete_transfer_unknown(unknown.ID)
+                    return True
+            else:
+                # 对应 2)
+                return True
+        else:
+            # 对应 1)
+            return True
 
     @DbPersist(_db)
     def insert_transfer_unknown(self, path, dest):
@@ -1064,7 +1130,6 @@ class DbHelper:
             leeching = site_user_info.leeching
             bonus = site_user_info.bonus
             url = site_user_info.site_url
-            favicon = site_user_info.site_favicon
             msg_unread = site_user_info.message_unread
             if not self.is_exists_site_user_statistics(url):
                 self._db.insert(SITEUSERINFOSTATS(
@@ -1081,7 +1146,6 @@ class DbHelper:
                     SEEDING_SIZE=seeding_size,
                     BONUS=bonus,
                     URL=url,
-                    FAVICON=favicon,
                     MSG_UNREAD=msg_unread
                 ))
             else:
@@ -1099,7 +1163,6 @@ class DbHelper:
                         "LEECHING": leeching,
                         "SEEDING_SIZE": seeding_size,
                         "BONUS": bonus,
-                        "FAVICON": favicon,
                         "MSG_UNREAD": msg_unread
                     }
                 )
@@ -1113,6 +1176,50 @@ class DbHelper:
             return True
         else:
             return False
+
+    @DbPersist(_db)
+    def update_site_favicon(self, site_user_infos: list):
+        """
+        更新站点图标数据
+        """
+        if not site_user_infos:
+            return
+        for site_user_info in site_user_infos:
+            site_icon = "data:image/ico;base64," + \
+                        site_user_info.site_favicon if site_user_info.site_favicon else site_user_info.site_url \
+                                                                                        + "/favicon.ico"
+            if not self.is_exists_site_favicon(site_user_info.site_name):
+                self._db.insert(SITEFAVICON(
+                    SITE=site_user_info.site_name,
+                    URL=site_user_info.site_url,
+                    FAVICON=site_icon
+                ))
+            elif site_user_info.site_favicon:
+                self._db.query(SITEFAVICON).filter(SITEFAVICON.SITE == site_user_info.site_name).update(
+                    {
+                        "URL": site_user_info.site_url,
+                        "FAVICON": site_icon
+                    }
+                )
+
+    def is_exists_site_favicon(self, site):
+        """
+        判断站点图标是否存在
+        """
+        count = self._db.query(SITEFAVICON).filter(SITEFAVICON.SITE == site).count()
+        if count > 0:
+            return True
+        else:
+            return False
+
+    def get_site_favicons(self, site=None):
+        """
+        查询站点数据历史
+        """
+        if site:
+            return self._db.query(SITEFAVICON).filter(SITEFAVICON.SITE == site).all()
+        else:
+            return self._db.query(SITEFAVICON).all()
 
     @DbPersist(_db)
     def update_site_seed_info_site_name(self, new_name, old_name):
@@ -1559,14 +1666,20 @@ class DbHelper:
             LST_MOD_DATE=time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
         ))
 
-    def get_brushtask_torrents(self, brush_id):
+    def get_brushtask_torrents(self, brush_id, active=True):
         """
         查询刷流任务所有种子
         """
         if not brush_id:
             return []
-        return self._db.query(SITEBRUSHTORRENTS).filter(SITEBRUSHTORRENTS.TASK_ID == brush_id,
-                                                        SITEBRUSHTORRENTS.DOWNLOAD_ID != '0').all()
+        if active:
+            return self._db.query(SITEBRUSHTORRENTS).filter(
+                SITEBRUSHTORRENTS.TASK_ID == int(brush_id),
+                SITEBRUSHTORRENTS.DOWNLOAD_ID != '0').all()
+        else:
+            return self._db.query(SITEBRUSHTORRENTS).filter(
+                SITEBRUSHTORRENTS.TASK_ID == int(brush_id)
+            ).order_by(SITEBRUSHTORRENTS.LST_MOD_DATE.desc()).all()
 
     def is_brushtask_torrent_exists(self, brush_id, title, enclosure):
         """
@@ -1849,7 +1962,8 @@ class DbHelper:
         """
         if not task_id:
             return []
-        return self._db.query(USERRSSTASKHISTORY).filter(USERRSSTASKHISTORY.TASK_ID == task_id).all()
+        return self._db.query(USERRSSTASKHISTORY).filter(USERRSSTASKHISTORY.TASK_ID == task_id)\
+            .order_by(USERRSSTASKHISTORY.DATE.desc()).all()
 
     def get_rss_history(self, rtype=None, rid=None):
         """
@@ -1858,8 +1972,9 @@ class DbHelper:
         if rid:
             return self._db.query(RSSHISTORY).filter(RSSHISTORY.ID == int(rid)).all()
         elif rtype:
-            return self._db.query(RSSHISTORY).filter(RSSHISTORY.TYPE == rtype).all()
-        return self._db.query(RSSHISTORY).all()
+            return self._db.query(RSSHISTORY).filter(RSSHISTORY.TYPE == rtype)\
+                .order_by(RSSHISTORY.FINISH_TIME.desc()).all()
+        return self._db.query(RSSHISTORY).order_by(RSSHISTORY.FINISH_TIME.desc()).all()
 
     def is_exists_rss_history(self, rssid):
         """
@@ -1947,14 +2062,17 @@ class DbHelper:
         查询自定义识别词
         """
         if wid:
-            return self._db.query(CUSTOMWORDS).filter(CUSTOMWORDS.ID == int(wid)).all()
+            return self._db.query(CUSTOMWORDS).filter(CUSTOMWORDS.ID == int(wid))\
+                .order_by(CUSTOMWORDS.GROUP_ID).all()
         elif gid:
-            return self._db.query(CUSTOMWORDS).filter(CUSTOMWORDS.GROUP_ID == int(gid)).all()
+            return self._db.query(CUSTOMWORDS).filter(CUSTOMWORDS.GROUP_ID == int(gid))\
+                .order_by(CUSTOMWORDS.GROUP_ID).all()
         elif wtype and enabled is not None and regex is not None:
             return self._db.query(CUSTOMWORDS).filter(CUSTOMWORDS.ENABLED == int(enabled),
                                                       CUSTOMWORDS.TYPE == int(wtype),
-                                                      CUSTOMWORDS.REGEX == int(regex)).all()
-        return self._db.query(CUSTOMWORDS).all()
+                                                      CUSTOMWORDS.REGEX == int(regex))\
+                .order_by(CUSTOMWORDS.GROUP_ID).all()
+        return self._db.query(CUSTOMWORDS).all().order_by(CUSTOMWORDS.GROUP_ID)
 
     def is_custom_words_existed(self, replaced=None, front=None, back=None):
         """
@@ -2178,7 +2296,7 @@ class DbHelper:
         ))
 
     @DbPersist(_db)
-    def check_message_client(self, cid=None, interactive=None, enabled=None):
+    def check_message_client(self, cid=None, interactive=None, enabled=None, ctype=None):
         """
         设置目录同步状态
         """
@@ -2194,8 +2312,9 @@ class DbHelper:
                     "ENABLED": int(enabled)
                 }
             )
-        elif not cid and int(interactive) == 0:
-            self._db.query(MESSAGECLIENT).filter(MESSAGECLIENT.INTERACTIVE == 1).update(
+        elif not cid and int(interactive) == 0 and ctype:
+            self._db.query(MESSAGECLIENT).filter(MESSAGECLIENT.INTERACTIVE == 1,
+                                                 MESSAGECLIENT.TYPE == ctype).update(
                 {
                     "INTERACTIVE": 0
                 }
@@ -2243,3 +2362,18 @@ class DbHelper:
             CONFIG=json.dumps(config),
             NOTE=note
         ))
+
+    @DbPersist(_db)
+    def delete_douban_history(self, hid):
+        """
+        删除豆瓣同步记录
+        """
+        if not hid:
+            return
+        self._db.query(DOUBANMEDIAS).filter(DOUBANMEDIAS.ID == int(hid)).delete()
+
+    def get_douban_history(self):
+        """
+        查询豆瓣同步记录
+        """
+        return self._db.query(DOUBANMEDIAS).order_by(DOUBANMEDIAS.ADD_TIME.desc()).all()

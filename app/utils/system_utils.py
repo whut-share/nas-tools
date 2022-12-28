@@ -5,6 +5,7 @@ import shutil
 import subprocess
 
 from app.utils import PathUtils
+from app.utils.exception_utils import ExceptionUtils
 from app.utils.types import OsType
 
 
@@ -33,7 +34,7 @@ class SystemUtils:
             total_b, used_b, free_b = shutil.disk_usage(path)
             return used_b, total_b
         except Exception as e:
-            print(str(e))
+            ExceptionUtils.exception_traceback(e)
             return 0, 0
 
     @staticmethod
@@ -45,7 +46,9 @@ class SystemUtils:
             return OsType.WINDOWS
         elif SystemUtils.is_synology():
             return OsType.SYNOLOGY
-        elif platform.system() == 'Darwin':
+        elif SystemUtils.is_docker():
+            return OsType.DOCKER
+        elif SystemUtils.is_macos():
             return OsType.MACOS
         else:
             return OsType.LINUX
@@ -68,7 +71,7 @@ class SystemUtils:
             local_date = utc_date + datetime.timedelta(hours=8)
             local_date_str = datetime.datetime.strftime(local_date, '%Y-%m-%d %H:%M:%S')
         except Exception as e:
-            print(f'Could not get local date:{e}')
+            ExceptionUtils.exception_traceback(e)
             return utc_time_str
         return local_date_str
 
@@ -87,7 +90,8 @@ class SystemUtils:
         """
         执行命令，获得返回结果
         """
-        return os.popen(cmd).readline().strip()
+        with os.popen(cmd) as p:
+            return p.readline().strip()
 
     @staticmethod
     def is_docker():
@@ -102,6 +106,10 @@ class SystemUtils:
         return True if os.name == "nt" else False
 
     @staticmethod
+    def is_macos():
+        return True if platform.system() == 'Darwin' else False
+
+    @staticmethod
     def copy(src, dest):
         """
         复制
@@ -110,6 +118,7 @@ class SystemUtils:
             shutil.copy2(os.path.normpath(src), os.path.normpath(dest))
             return 0, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod
@@ -124,6 +133,7 @@ class SystemUtils:
             shutil.move(tmp_file, os.path.normpath(dest))
             return 0, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod
@@ -142,6 +152,7 @@ class SystemUtils:
                 os.link(os.path.normpath(src), os.path.normpath(dest))
             return 0, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod
@@ -153,6 +164,7 @@ class SystemUtils:
             os.symlink(os.path.normpath(src), os.path.normpath(dest))
             return 0, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod
@@ -169,6 +181,7 @@ class SystemUtils:
                                      startupinfo=SystemUtils.__get_hidden_shell()).returncode
             return retcode, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod
@@ -185,6 +198,7 @@ class SystemUtils:
                                      startupinfo=SystemUtils.__get_hidden_shell()).returncode
             return retcode, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod
@@ -204,6 +218,7 @@ class SystemUtils:
                                      startupinfo=SystemUtils.__get_hidden_shell()).returncode
             return retcode, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod
@@ -223,6 +238,7 @@ class SystemUtils:
                                      startupinfo=SystemUtils.__get_hidden_shell()).returncode
             return retcode, ""
         except Exception as err:
+            ExceptionUtils.exception_traceback(err)
             return -1, str(err)
 
     @staticmethod

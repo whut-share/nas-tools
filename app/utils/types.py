@@ -29,6 +29,7 @@ class SearchType(Enum):
     OT = "手动下载"
     TG = "Telegram"
     API = "第三方API请求"
+    SLACK = "Slack"
 
 
 class RmtMode(Enum):
@@ -51,7 +52,8 @@ class OsType(Enum):
     WINDOWS = "Windows"
     LINUX = "Linux"
     SYNOLOGY = "Synology"
-    MACOS = "MACOS"
+    MACOS = "MacOS"
+    DOCKER = "Docker"
 
 
 class IndexerType(Enum):
@@ -91,3 +93,16 @@ RMT_MODES = {
     "minio": RmtMode.MINIO,
     "miniocopy": RmtMode.MINIOCOPY
 }
+
+
+# 站点框架
+class SiteSchema(Enum):
+    DiscuzX = "Discuz!"
+    Gazelle = "Gazelle"
+    Ipt = "IPTorrents"
+    NexusPhp = "NexusPhp"
+    NexusProject = "NexusProject"
+    NexusRabbit = "NexusRabbit"
+    SmallHorse = "Small Horse"
+    Unit3d = "Unit3d"
+    TorrentLeech = "TorrentLeech"
