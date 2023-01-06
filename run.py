@@ -1,15 +1,11 @@
 import os
-import shutil
 import signal
 import sys
 import time
 import warnings
-
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
-
-from app.utils.cache_manager import ConfigLoadCache
-from app.utils.exception_utils import ExceptionUtils
+from app.utils import ConfigLoadCache, ExceptionUtils
 
 warnings.filterwarnings('ignore')
 
@@ -135,6 +131,8 @@ def start_service():
     TorrentRemover()
     # 加载索引器配置
     IndexerHelper()
+    # 初始化浏览器
+    ChromeHelper().init_driver()
 
 
 def monitor_config():

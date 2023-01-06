@@ -1,10 +1,9 @@
 import os.path
 import pickle
 
-from app.utils import StringUtils
-from app.utils.exception_utils import ExceptionUtils
-from config import Config
+from app.utils import StringUtils, ExceptionUtils
 from app.utils.commons import singleton
+from config import Config
 
 
 @singleton
@@ -37,7 +36,8 @@ class IndexerHelper:
                     ua=None,
                     render=None,
                     language=None,
-                    pri=None):
+                    pri=None,
+                    chrome=True):
         if not url:
             return None
         for indexer in self._indexers:
@@ -55,7 +55,8 @@ class IndexerHelper:
                                    render=render,
                                    builtin=True,
                                    language=language,
-                                   pri=pri)
+                                   pri=pri,
+                                   chrome=chrome)
         return None
 
 
@@ -73,7 +74,8 @@ class IndexerConf(object):
                  render=None,
                  builtin=True,
                  language=None,
-                 pri=None):
+                 pri=None,
+                 chrome=True):
         if not datas:
             return
         self.datas = datas
@@ -82,19 +84,25 @@ class IndexerConf(object):
         self.domain = self.datas.get('domain')
         self.userinfo = self.datas.get('userinfo', {})
         self.search = self.datas.get('search', {})
-        self.index = self.datas.get('index', {})
+        self.browse = self.datas.get('browse', {})
         self.torrents = self.datas.get('torrents', {})
         self.category_mappings = self.datas.get('category_mappings', [])
         self.cookie = cookie
         self.rule = rule
         self.public = public
         self.proxy = proxy
-        self.parser = parser
-        self.ua = ua
-        if render is not None:
-            self.render = render
+        if parser is not None:
+            self.parser = parser
         else:
-            self.render = True if self.datas.get("render") else False
+            self.parser = self.datas.get('parser')
+        self.ua = ua
+        if not chrome:
+            self.render = False
+        else:
+            if render is not None:
+                self.render = render
+            else:
+                self.render = True if self.datas.get("render") else False
         self.builtin = builtin
         self.language = language
         self.pri = pri if pri else 0

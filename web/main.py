@@ -20,11 +20,12 @@ from flask_login import LoginManager, login_user, login_required, current_user
 
 import log
 from app.brushtask import BrushTask
+from app.conf import ModuleConf
 from app.downloader import Downloader
 from app.filter import Filter
-from app.helper import SecurityHelper, MetaHelper
+from app.helper import SecurityHelper, MetaHelper, ChromeHelper
 from app.indexer import Indexer
-from app.media import MetaInfo
+from app.media.meta import MetaInfo
 from app.mediaserver import WebhookEvent
 from app.message import Message
 from app.rsschecker import RssChecker
@@ -32,10 +33,9 @@ from app.sites import Sites
 from app.subscribe import Subscribe
 from app.sync import Sync
 from app.torrentremover import TorrentRemover
-from app.utils import DomUtils, SystemUtils, WebUtils
-from app.utils.exception_utils import ExceptionUtils
+from app.utils import DomUtils, SystemUtils, WebUtils, ExceptionUtils
 from app.utils.types import *
-from config import WECHAT_MENU, PT_TRANSFER_INTERVAL, TORRENT_SEARCH_PARAMS, NETTEST_TARGETS, Config
+from config import PT_TRANSFER_INTERVAL, Config
 from web.action import WebAction
 from web.apiv1 import apiv1_bp
 from web.backend.WXBizMsgCrypt3 import WXBizMsgCrypt
@@ -115,25 +115,27 @@ def login():
         跳转到导航页面
         """
         # 判断当前的运营环境
-        SystemFlag = 0 if SystemUtils.is_windows() else 1
+        SystemFlag = SystemUtils.get_system()
         SyncMod = Config().get_config('pt').get('rmt_mode')
         TMDBFlag = 1 if Config().get_config('app').get('rmt_tmdbkey') else 0
         if not SyncMod:
             SyncMod = "link"
-        RestypeDict = TORRENT_SEARCH_PARAMS.get("restype")
-        PixDict = TORRENT_SEARCH_PARAMS.get("pix")
+        RmtModeDict = WebAction().get_rmt_modes()
+        RestypeDict = ModuleConf.TORRENT_SEARCH_PARAMS.get("restype")
+        PixDict = ModuleConf.TORRENT_SEARCH_PARAMS.get("pix")
         SiteFavicons = Sites().get_site_favicon()
         return render_template('navigation.html',
                                GoPage=GoPage,
                                UserName=userinfo.username,
                                UserPris=str(userinfo.pris).split(","),
-                               SystemFlag=SystemFlag,
+                               SystemFlag=SystemFlag.value,
                                TMDBFlag=TMDBFlag,
                                AppVersion=WebUtils.get_current_version(),
                                RestypeDict=RestypeDict,
                                PixDict=PixDict,
                                SyncMod=SyncMod,
-                               SiteFavicons=SiteFavicons)
+                               SiteFavicons=SiteFavicons,
+                               RmtModeDict=RmtModeDict)
 
     def redirect_to_login(errmsg=''):
         """
@@ -246,7 +248,7 @@ def search():
     # 站点列表
     SiteDict = {}
     for item in Indexer().get_indexers() or []:
-        SiteDict[item.name] = {
+        SiteDict[md5_hash(item.name)] = {
             "id": item.id,
             "name": item.name,
             "public": item.public,
@@ -258,8 +260,8 @@ def search():
                            NeedSearch=NeedSearch or "",
                            Count=Count,
                            Results=SearchResults,
-                           RestypeDict=TORRENT_SEARCH_PARAMS.get("restype"),
-                           PixDict=TORRENT_SEARCH_PARAMS.get("pix"),
+                           RestypeDict=ModuleConf.TORRENT_SEARCH_PARAMS.get("restype"),
+                           PixDict=ModuleConf.TORRENT_SEARCH_PARAMS.get("pix"),
                            SiteDict=SiteDict,
                            UPCHAR=chr(8593))
 
@@ -349,9 +351,11 @@ def rss_calendar():
 def sites():
     CfgSites = Sites().get_sites()
     RuleGroups = {str(group["id"]): group["name"] for group in Filter().get_rule_groups()}
+    ChromeOk = ChromeHelper().get_status()
     return render_template("site/site.html",
                            Sites=CfgSites,
-                           RuleGroups=RuleGroups)
+                           RuleGroups=RuleGroups,
+                           ChromeOk=ChromeOk)
 
 
 # 站点列表页面
@@ -391,12 +395,25 @@ def resources():
 def recommend():
     RecommendType = request.args.get("t")
     CurrentPage = request.args.get("page") or 1
-    Items = WebAction().get_recommend({"type": RecommendType, "page": CurrentPage}).get("Items")
-    return render_template("recommend.html",
-                           Items=Items,
-                           PageCount=len(Items),
+    return render_template("discovery/recommend.html",
                            RecommendType=RecommendType,
                            CurrentPage=CurrentPage)
+
+
+# 电影推荐页面
+@App.route('/discovery_movie', methods=['POST', 'GET'])
+@login_required
+def discovery_movie():
+    return render_template("discovery/discovery.html",
+                           DiscoveryType="movie")
+
+
+# 电视剧推荐页面
+@App.route('/discovery_tv', methods=['POST', 'GET'])
+@login_required
+def discovery_tv():
+    return render_template("discovery/discovery.html",
+                           DiscoveryType="tv")
 
 
 # 正在下载页面
@@ -424,9 +441,8 @@ def downloaded():
 @login_required
 def torrent_remove():
     TorrentRemoveTasks = TorrentRemover().get_torrent_remove_tasks()
-    DownloaderConfig = TorrentRemover().TORRENTREMOVER_DICT
     return render_template("download/torrent_remove.html",
-                           DownloaderConfig=DownloaderConfig,
+                           DownloaderConfig=ModuleConf.TORRENTREMOVER_DICT,
                            Count=len(TorrentRemoveTasks),
                            TorrentRemoveTasks=TorrentRemoveTasks)
 
@@ -484,7 +500,7 @@ def statistics():
         days=2)
 
     # 站点用户数据
-    SiteUserStatistics = Sites().get_site_user_statistics(encoding="DICT")
+    SiteUserStatistics = WebAction().get_site_user_statistics({"encoding": "DICT"}).get("data")
 
     return render_template("site/statistics.html",
                            CurrentDownload=CurrentDownload,
@@ -733,7 +749,7 @@ def service():
        <path d="M12 15v2"></path>
     </svg>
     '''
-    targets = NETTEST_TARGETS
+    targets = ModuleConf.NETTEST_TARGETS
     scheduler_cfg_list.append(
         {'name': '网络连通性测试', 'time': '', 'state': 'OFF', 'id': 'nettest', 'svg': svg, 'color': 'cyan',
          "targets": targets})
@@ -872,9 +888,11 @@ def basic():
     proxy = Config().get_config('app').get("proxies", {}).get("http")
     if proxy:
         proxy = proxy.replace("http://", "")
+    RmtModeDict = WebAction().get_rmt_modes()
     return render_template("setting/basic.html",
                            Config=Config().get_config(),
-                           Proxy=proxy)
+                           Proxy=proxy,
+                           RmtModeDict=RmtModeDict)
 
 
 # 自定义识别词设置页面
@@ -891,10 +909,12 @@ def customwords():
 @App.route('/directorysync', methods=['POST', 'GET'])
 @login_required
 def directorysync():
+    RmtModeDict = WebAction().get_rmt_modes()
     SyncPaths = WebAction().get_directorysync().get("result")
     return render_template("setting/directorysync.html",
                            SyncPaths=SyncPaths,
-                           SyncCount=len(SyncPaths))
+                           SyncCount=len(SyncPaths),
+                           RmtModeDict=RmtModeDict)
 
 
 # 豆瓣页面
@@ -921,9 +941,11 @@ def downloader():
 @login_required
 def download_setting():
     DownloadSetting = Downloader().get_download_setting()
+    DefaultDownloadSetting = Downloader().get_default_download_setting()
     Count = len(DownloadSetting)
     return render_template("setting/download_setting.html",
                            DownloadSetting=DownloadSetting,
+                           DefaultDownloadSetting=DefaultDownloadSetting,
                            DownloaderTypes=DownloaderType,
                            Count=Count)
 
@@ -932,7 +954,7 @@ def download_setting():
 @App.route('/indexer', methods=['POST', 'GET'])
 @login_required
 def indexer():
-    indexers = Indexer.get_builtin_indexers(check=False)
+    indexers = Indexer().get_builtin_indexers(check=False)
     private_count = len([item.id for item in indexers if not item.public])
     public_count = len([item.id for item in indexers if item.public])
     return render_template("setting/indexer.html",
@@ -961,9 +983,8 @@ def mediaserver():
 @login_required
 def notification():
     MessageClients = Message().get_message_client_info()
-    MESSAGE_DICT = Message().MESSAGE_DICT
-    Channels = MESSAGE_DICT.get("client")
-    Switchs = MESSAGE_DICT.get("switch")
+    Channels = ModuleConf.MESSAGE_DICT.get("client")
+    Switchs = ModuleConf.MESSAGE_DICT.get("switch")
     return render_template("setting/notification.html",
                            Channels=Channels,
                            Switchs=Switchs,
@@ -975,7 +996,10 @@ def notification():
 @App.route('/subtitle', methods=['POST', 'GET'])
 @login_required
 def subtitle():
-    return render_template("setting/subtitle.html", Config=Config().get_config())
+    ChromeOk = ChromeHelper().get_status()
+    return render_template("setting/subtitle.html",
+                           Config=Config().get_config(),
+                           ChromeOk=ChromeOk)
 
 
 # 用户管理页面
@@ -1164,7 +1188,7 @@ def wechat():
                     log.info("点击菜单：%s" % event_key)
                     keys = event_key.split('#')
                     if len(keys) > 2:
-                        content = WECHAT_MENU.get(keys[2])
+                        content = ModuleConf.WECHAT_MENU.get(keys[2])
             elif msg_type == "text":
                 # 文本消息
                 content = DomUtils.tag_value(root_node, "Content", default="")
@@ -1485,6 +1509,7 @@ def subscribe():
         return make_response(msg, 500)
 
 
+# 备份配置文件
 @App.route('/backup', methods=['POST'])
 @login_required
 def backup():
@@ -1531,14 +1556,18 @@ def backup():
     return send_file(zip_file)
 
 
+# 上传文件到服务器
 @App.route('/upload', methods=['POST'])
 @login_required
 def upload():
     try:
         files = request.files['file']
-        zip_file = Path(Config().get_config_path()) / files.filename
-        files.save(str(zip_file))
-        return {"code": 0, "filepath": str(zip_file)}
+        temp_path = Config().get_temp_path()
+        if not os.path.exists(temp_path):
+            os.makedirs(temp_path)
+        file_path = Path(temp_path) / files.filename
+        files.save(str(file_path))
+        return {"code": 0, "filepath": str(file_path)}
     except Exception as e:
         ExceptionUtils.exception_traceback(e)
         return {"code": 1, "msg": str(e), "filepath": ""}
@@ -1570,5 +1599,5 @@ def str_filesize(size):
 
 # MD5 HASH过滤器
 @App.template_filter('hash')
-def md5_hash(size):
-    return WebAction.md5_hash(size)
+def md5_hash(text):
+    return WebAction.md5_hash(text)

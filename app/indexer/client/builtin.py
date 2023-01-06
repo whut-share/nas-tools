@@ -2,24 +2,36 @@ import datetime
 import time
 
 import log
-from app.indexer.client.rarbg import Rarbg
-from app.utils.types import SearchType, IndexerType
-from config import Config
-from app.indexer.index_client import IIndexClient
-from app.indexer.client.spider import TorrentSpider
+from app.helper import IndexerHelper, IndexerConf, ProgressHelper, ChromeHelper
+from app.indexer.client._base import _IIndexClient
+from app.indexer.client._rarbg import Rarbg
+from app.indexer.client._render_spider import RenderSpider
+from app.indexer.client._spider import TorrentSpider
 from app.sites import Sites
 from app.utils import StringUtils
-from app.helper import ProgressHelper, IndexerHelper
+from app.utils.types import SearchType, IndexerType
+from config import Config
 
 
-class BuiltinIndexer(IIndexClient):
+class BuiltinIndexer(_IIndexClient):
+    schema = "builtin"
+    _client_config = {}
     index_type = IndexerType.BUILTIN.value
     progress = None
     sites = None
 
+    def __init__(self, config=None):
+        super().__init__()
+        self._client_config = config or {}
+        self.init_config()
+
     def init_config(self):
         self.sites = Sites()
         self.progress = ProgressHelper()
+
+    @classmethod
+    def match(cls, ctype):
+        return True if ctype in [cls.schema, cls.index_type] else False
 
     def get_status(self):
         """
@@ -33,6 +45,8 @@ class BuiltinIndexer(IIndexClient):
         # 选中站点配置
         indexer_sites = Config().get_config("pt").get("indexer_sites") or []
         _indexer_domains = []
+        # 检查浏览器状态
+        chrome_ok = ChromeHelper().get_status()
         # 私有站点
         for site in Sites().get_sites():
             if not site.get("rssurl") and not site.get("signurl"):
@@ -47,19 +61,26 @@ class BuiltinIndexer(IIndexClient):
                 is_public = True
                 proxy = public_site.get("proxy")
                 language = public_site.get("language")
+                render = public_site.get("render")
+                parser = public_site.get("parser")
             else:
                 is_public = False
                 proxy = True if site.get("proxy") == "Y" else False
                 language = None
+                render = None
+                parser = None
             indexer = IndexerHelper().get_indexer(url=url,
                                                   cookie=site.get("cookie"),
+                                                  ua=site.get("ua"),
                                                   name=site.get("name"),
                                                   rule=site.get("rule"),
+                                                  pri=site.get('pri'),
                                                   public=is_public,
                                                   proxy=proxy,
-                                                  ua=site.get("ua"),
+                                                  render=render,
                                                   language=language,
-                                                  pri=site.get('pri'))
+                                                  parser=parser,
+                                                  chrome=chrome_ok)
             if indexer:
                 if indexer_id and indexer.id == indexer_id:
                     return indexer
@@ -77,7 +98,8 @@ class BuiltinIndexer(IIndexClient):
                                                       proxy=attr.get("proxy"),
                                                       render=attr.get("render"),
                                                       language=attr.get("language"),
-                                                      parser=attr.get("parser"))
+                                                      parser=attr.get("parser"),
+                                                      chrome=chrome_ok)
                 if indexer:
                     if indexer_id and indexer.id == indexer_id:
                         return indexer
@@ -120,11 +142,17 @@ class BuiltinIndexer(IIndexClient):
         if indexer.language == "en" and StringUtils.is_chinese(search_word):
             log.warn(f"【{self.index_type}】{indexer.name} 无法使用中文名搜索")
             return []
-        if indexer.parser == "rarbg":
-            imdb_id = match_media.imdb_id if match_media else None
-            result_array = Rarbg().search(keyword=search_word, indexer=indexer, imdb_id=imdb_id)
-        else:
-            result_array = self.__spider_search(keyword=search_word, indexer=indexer)
+        result_array = []
+        try:
+            if indexer.parser == "Rarbg":
+                imdb_id = match_media.imdb_id if match_media else None
+                result_array = Rarbg().search(keyword=search_word, indexer=indexer, imdb_id=imdb_id)
+            elif indexer.parser == "RenderSpider":
+                result_array = RenderSpider().search(keyword=search_word, indexer=indexer)
+            else:
+                result_array = self.__spider_search(keyword=search_word, indexer=indexer)
+        except Exception as err:
+            print(str(err))
         if len(result_array) == 0:
             log.warn(f"【{self.index_type}】{indexer.name} 未检索到数据")
             self.progress.update(ptype='search', text=f"{indexer.name} 未检索到数据")
@@ -144,10 +172,16 @@ class BuiltinIndexer(IIndexClient):
         """
         if not index_id:
             return []
-        indexer = self.get_indexers(indexer_id=index_id)
+        indexer: IndexerConf = self.get_indexers(indexer_id=index_id)
         if not indexer:
             return []
-        return self.__spider_search(indexer, page=page, keyword=keyword)
+        if indexer.parser == "RenderSpider":
+            return RenderSpider().search(keyword=keyword,
+                                         indexer=indexer,
+                                         page=page)
+        return self.__spider_search(indexer=indexer,
+                                    page=page,
+                                    keyword=keyword)
 
     @staticmethod
     def __spider_search(indexer, page=None, keyword=None, timeout=30):

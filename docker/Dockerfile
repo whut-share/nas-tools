@@ -8,6 +8,7 @@ RUN apk add --no-cache libffi-dev \
     && curl https://dl.min.io/client/mc/release/linux-amd64/mc --create-dirs -o /usr/bin/mc \
     && chmod +x /usr/bin/mc \
     && pip install --upgrade pip setuptools wheel \
+    && pip install cython \
     && pip install -r https://raw.githubusercontent.com/jxxghp/nas-tools/master/requirements.txt \
     && apk del libffi-dev \
     && npm install pm2 -g \
@@ -16,6 +17,8 @@ ENV LANG="C.UTF-8" \
     TZ="Asia/Shanghai" \
     NASTOOL_CONFIG="/config/config.yaml" \
     NASTOOL_AUTO_UPDATE=true \
+    NASTOOL_CN_UPDATE=true \
+    NASTOOL_VERSION=master \
     PS1="\u@\h:\w \$ " \
     REPO_URL="https://github.com/johnZp/nas-tools.git" \
     PUID=0 \
@@ -30,7 +33,7 @@ RUN python_ver=$(python3 -V | awk '{print $2}') \
     && git config --global pull.ff only \
     && git config --global http.version HTTP/1.1 \
     && git config --global http.postBuffer 524288000 \
-    && git clone -b master ${REPO_URL} --depth=1 ${WORKDIR} --recurse-submodule \
+    && git clone -b master ${REPO_URL} ${WORKDIR} --depth=1 --recurse-submodule \
     && git config --global --add safe.directory ${WORKDIR}
 EXPOSE 3000
 VOLUME ["/config"]

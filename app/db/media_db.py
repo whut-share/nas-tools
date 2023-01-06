@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import QueuePool
 from app.db.models import BaseMedia, MEDIASYNCITEMS, MEDIASYNCSTATISTIC
-from app.utils.exception_utils import ExceptionUtils
+from app.utils import ExceptionUtils
 from config import Config
 
 lock = threading.Lock()
@@ -14,8 +14,9 @@ _Engine = create_engine(
     echo=False,
     poolclass=QueuePool,
     pool_pre_ping=True,
-    pool_size=10,
-    pool_recycle=60 * 30
+    pool_size=50,
+    pool_recycle=60 * 10,
+    max_overflow=0
 )
 _Session = scoped_session(sessionmaker(bind=_Engine,
                                        autoflush=True,

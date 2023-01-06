@@ -1,3 +1,4 @@
+{% import 'macro/svg.html' as SVG %}
 <div class="container-xl">
   <!-- Page title -->
   <div class="page-header d-print-none">
@@ -10,98 +11,40 @@
       <div class="col-auto ms-auto d-print-none">
         <div class="btn-list">
           <a href="javascript:show_add_custom_word_group_modal()" class="btn btn-primary d-none d-sm-inline-block">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24"
-              stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
+            {{ SVG.plus() }}
             新增
           </a>
           <a href="javascript:show_add_custom_word_group_modal()" class="btn btn-primary d-sm-none btn-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24"
-              stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
+            {{ SVG.plus() }}
           </a>
           <a href="javascript:batch_check_action('enable')" class="btn btn-success ms-auto d-none d-sm-inline-block">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-play" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <path d="M7 4v16l13 -8z"></path>
-            </svg>
+            {{ SVG.player_play() }}
             启用
           </a>
           <a href="javascript:batch_check_action('enable')" class="btn btn-success d-sm-none btn-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-play" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <path d="M7 4v16l13 -8z"></path>
-            </svg>
+            {{ SVG.player_play() }}
           </a>
           <a href="javascript:batch_check_action('disable')" class="btn btn-secondary ms-auto d-none d-sm-inline-block">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <rect x="5" y="5" width="14" height="14" rx="2"></rect>
-            </svg>
+            {{ SVG.player_stop() }}
             停用
           </a>
           <a href="javascript:batch_check_action('disable')" class="btn btn-secondary d-sm-none btn-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <rect x="5" y="5" width="14" height="14" rx="2"></rect>
-            </svg>
+            {{ SVG.player_stop() }}
           </a>
           <a href="javascript:show_import_custom_words_modal()"
             class="btn btn-twitter ms-auto d-none d-sm-inline-block">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-transfer-in" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <path d="M4 18v3h16v-14l-8 -4l-8 4v3"></path>
-              <path d="M4 14h9"></path>
-              <path d="M10 11l3 3l-3 3"></path>
-            </svg>
+            {{ SVG.transfer_in() }}
             导入
           </a>
           <a href="javascript:show_import_custom_words_modal()" class="btn btn-twitter d-sm-none btn-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-transfer-in" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <path d="M4 18v3h16v-14l-8 -4l-8 4v3"></path>
-              <path d="M4 14h9"></path>
-              <path d="M10 11l3 3l-3 3"></path>
-            </svg>
+            {{ SVG.transfer_in() }}
           </a>
           <a href="javascript:batch_check_action('export')" class="btn btn-info btn-twitter d-none d-sm-inline-block">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-transfer-out" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <path d="M4 19v2h16v-14l-8 -4l-8 4v2"></path>
-              <path d="M13 14h-9"></path>
-              <path d="M7 11l-3 3l3 3"></path>
-            </svg>
+            {{ SVG.transfer_out() }}
             导出
           </a>
           <a href="javascript:batch_check_action('export')" class="btn btn-twitter d-sm-none btn-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-transfer-out" width="24"
-              height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-              <path d="M4 19v2h16v-14l-8 -4l-8 4v2"></path>
-              <path d="M13 14h-9"></path>
-              <path d="M7 11l-3 3l3 3"></path>
-            </svg>
+            {{ SVG.transfer_out() }}
           </a>
         </div>
       </div>
@@ -121,32 +64,16 @@
               <h3 class="card-title"><strong>{{ Group.name }}</strong></h3>
             </a>
             <div class="card-actions btn-actions">
-              <a href="javascript:$('#div_group{{ Group.id }}').slideToggle()" class="btn-action" title="折叠">
-                <svg xmlns="http://www.w3.org/2000/svg" class="icon ms-1" width="20" height="20" fill="currentColor"
-                  viewBox="0 0 16 16">
-                  <path fill-rule="evenodd"
-                    d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z" />
-                </svg>
+              <a href="javascript:$('#div_group{{ Group.id }}').slideToggle()" class="btn-action ms-1" title="折叠">
+                {{ SVG.menu_2() }}
               </a>
               <a href="javascript:show_add_custom_word_modal('{{ Group.id }}', {{ Group.type }}, {{ Group.seasons }})"
-                class="btn-action" title="增加识别词">
-                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-plus" width="40" height="40"
-                  viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
+                class="btn-action ms-1" title="增加识别词">
+                {{ SVG.plus() }}
               </a>
               {% if Group.id != "-1" %}
-              <a href="javascript:delete_custom_word_group('{{ Group.id }}')" class="btn-action" title="删除识别词组">
-                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x" width="24" height="24"
-                  viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+              <a href="javascript:delete_custom_word_group('{{ Group.id }}')" class="btn-action ms-1" title="删除识别词组">
+                {{ SVG.x() }}
               </a>
               {% endif %}
             </div>
@@ -157,8 +84,10 @@
               <thead>
                 <tr>
                   {% if Group.words %}
-                  <th class="w-1"><input class="form-check-input m-0 align-middle" id="all_check_group{{ Group.id }}"
-                      type="checkbox" aria-label="全选"></th>
+                  <th class="w-1">
+                    <input class="form-check-input m-0 align-middle" type="checkbox" aria-label="全选"
+                           onclick="select_SelectALL($(this).prop('checked'), 'custom_words_{{ Group.id }}')">
+                 </th>
                   {% endif %}
                   <th>被替换词</th>
                   <th>替换词</th>
@@ -174,8 +103,10 @@
                 {% if Group.words %}
                 {% for Word in Group.words %}
                 <tr>
-                  <td><input class="form-check-input m-0 align-middle" id="check_group{{ Group.id }}_{{ Word.id }}"
-                      type="checkbox"></td>
+                  <td>
+                    <input class="form-check-input m-0 align-middle" name="custom_words_{{ Group.id }}"
+                           value="{{ Group.id }}_{{ Word.id }}" type="checkbox">
+                  </td>
                   <td>{{ Word.replaced }}</td>
                   <td>{{ Word.replace }}</td>
                   <td>
@@ -212,24 +143,11 @@
                   <td>
                     <div class="d-flex">
                       <a href="javascript:show_edit_custom_word_modal('{{ Word.id }}', '{{ Group.id }}', {{ Group.type }}, {{ Group.seasons }})"
-                        title="编辑替换词">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="icon ms-1" width="24" height="24"
-                          viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-                          stroke-linejoin="round">
-                          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                          <path d="M9 7h-3a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-3" />
-                          <path d="M9 15h3l8.5 -8.5a1.5 1.5 0 0 0 -3 -3l-8.5 8.5v3" />
-                          <line x1="16" y1="5" x2="19" y2="8" />
-                        </svg>
+                        title="编辑替换词" class='ms-1'>
+                        {{ SVG.edit() }}
                       </a>
                       <a href="javascript:delete_custom_word('{{ Word.id }}')" title="删除替换词" class="ms-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x" width="24"
-                          height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none"
-                          stroke-linecap="round" stroke-linejoin="round">
-                          <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
+                        {{ SVG.x() }}
                       </a>
                     </div>
                   </td>
@@ -553,26 +471,14 @@
     </div>
   </div>
   <script type="text/javascript">
-    // 绑定识别词词全选事件
-    $("[id^='all_check_group']").change(function () {
-      $(`[id^='check_group${$(this).attr("id").replace("all_check_group", "")}_']`).prop("checked", $(this).prop("checked"));
-    })
-
     // 批量启用/停用/导出
     function batch_check_action(flag) {
-      let ids_info = [];
-      $("[id^='check_group']").each(function () {
-        if ($(this).prop("checked")) {
-          ids_info.push($(this).attr("id").replace("check_group", ""));
-        }
-      });
+      let ids_info = select_GetSelectedVAL("^custom_words")
       if (ids_info.length == 0) {
         return;
       }
       if (flag == "disable" || flag == "enable") {
-        show_wait_process();
         ajax_post("check_custom_words", { flag: flag, ids_info: ids_info }, function (ret) {
-          hide_wait_process();
           if (ret.code == 0) {
             navmenu('customwords');
           } else {
@@ -587,9 +493,7 @@
 
     // 删除自定义识别词
     function delete_custom_word(id) {
-      show_wait_process();
       ajax_post("delete_custom_word", { id: id }, function (ret) {
-        hide_wait_process();
         if (ret.code == 0) {
           navmenu('customwords');
         }
@@ -613,9 +517,7 @@
         $("#export_note").removeClass("is-invalid");
       }
       $("#modal-export-custom-words-note").modal('hide');
-      show_wait_process();
       ajax_post("export_custom_words", { note: export_note, ids_info: export_ids_info }, function (ret) {
-        hide_wait_process();
         if (ret.code == 0) {
           $("#export_code").text(ret.string);
           $("#modal-export-custom-words-code").modal('show');
@@ -634,26 +536,31 @@
       const import_code = $("#import_code").val();
       $("#import_groups_div").empty();
       $("#modal-import-custom-words-code").modal('hide');
-      show_wait_process();
       ajax_post("analyse_import_custom_words_code", { import_code: import_code }, function (ret) {
-        hide_wait_process();
         if (ret.code == 0) {
           $("#import_note").text(ret.note_string);
           const Groups = ret.groups;
-          for (Group of Groups) {
-            let thead = `<thead><tr>
-                       <th class="w-1"><input class="form-check-input m-0 align-middle" id="import_all_check_group${Group.id}" type="checkbox" aria-label="全选"></th>
-                       <th>被替换词</th>
-                       <th>替换词</th>
-                       <th>偏移集数</th>
-                       <th>前定位词</th>
-                       <th>后定位词</th>
-                       <th>状态</th>
-                       <th>备注</th></tr></thead>`;
+          for (let Group of Groups) {
+            let thead = `<thead>
+                          <tr>
+                            <th class="w-1">
+                              <input class="form-check-input m-0 align-middle" type="checkbox" aria-label="全选"
+                                     onclick="select_SelectALL($(this).prop('checked'), 'import_custom_words_${Group.id}')">
+                            </th>
+                            <th>被替换词</th>
+                            <th>替换词</th>
+                            <th>偏移集数</th>
+                            <th>前定位词</th>
+                            <th>后定位词</th>
+                            <th>状态</th>
+                            <th>备注</th>
+                          </tr>
+                        </thead>`;
             let tbody_content = "";
-            for (word_id in Group["words"]) {
+            for (let word_id in Group["words"]) {
               let Word = Group["words"][word_id];
-              let checkbox = `<td><input class="form-check-input m-0 align-middle" id="import_check_group${Group.id}_${Word.id}" type="checkbox"></td>`;
+              let checkbox = `<td><input class="form-check-input m-0 align-middle" name="import_custom_words_${Group.id}" value="${Group.id}_${Word.id}"
+                      type="checkbox"></td>`;
               let replaced = `<td>${Word.replaced}</td>`;
               let replace = `<td>${Word.replace}</td>`;
               let offset;
@@ -691,10 +598,6 @@
             }
             $("#import_groups_div").append(`${head}${table}`);
           }
-          // 绑定全选事件
-          $("[id^='import_all_check_group']").bind("change", function () {
-            $(`[id^='import_check_group${$(this).attr("id").replace("import_all_check_group", "")}_']`).prop("checked", $(this).prop("checked"));
-          });
           $("#modal-import-custom-words-table").modal('show');
         }
       });
@@ -703,19 +606,11 @@
     // 导入选择的识别词
     function import_custom_words() {
       const import_code = $("#import_code").val();
-      let ids_info = [];
-      $("[id^='import_check_group']").each(function () {
-        if ($(this).prop("checked")) {
-          ids_info.push($(this).attr("id").replace("import_check_group", ""));
-        }
-      });
+      let ids_info = select_GetSelectedVAL("import_custom_words");
       $("#modal-import-custom-words-table").modal('hide');
-      show_wait_process();
       ajax_post("import_custom_words", { ids_info: ids_info, import_code: import_code }, function (ret) {
-        hide_wait_process();
         if (ret.code == 0) {
           $("#import_groups_div").empty();
-
           navmenu('customwords');
         } else {
           show_fail_modal(ret.msg, function() {
@@ -742,9 +637,7 @@
       }
       let tmdb_type = $("#tmdb_type").val();
       $("#modal-add-custom-word-group").modal('hide');
-      show_wait_process();
       ajax_post("add_custom_word_group", { tmdb_id: tmdb_id, tmdb_type: tmdb_type }, function (ret) {
-        hide_wait_process();
         if (ret.code == 0) {
           navmenu('customwords');
         } else {
@@ -759,9 +652,7 @@
     function delete_custom_word_group(gid) {
       show_confirm_modal("组内识别词将被同步删除，是否确认？", function () {
         hide_confirm_modal();
-        show_wait_process();
         ajax_post("delete_custom_word_group", { gid: gid }, function (ret) {
-          hide_wait_process();
           if (ret.code == 0) {
             navmenu('customwords');
           } else {
@@ -794,9 +685,7 @@
 
     // 显示编辑识别词框
     function show_edit_custom_word_modal(wid, gid, group_type, seasons) {
-      show_wait_process();
       ajax_post("get_custom_word", { wid: wid }, function (ret) {
-        hide_wait_process();
         if (ret.code == 0) {
           let word = ret.data;
           $("#customd_word_modal_title").text("编辑识别词");
@@ -895,7 +784,7 @@
         } else {
           $("#new_replaced").removeClass("is-invalid");
         }
-        if (!new_replace || new_replace == new_replaced) {
+        if (!new_replace || new_replace === new_replaced) {
           $("#new_replace").addClass("is-invalid");
           return;
         } else {
@@ -937,9 +826,7 @@
         regex: regex
       };
       $("#modal-set-custom-word").modal('hide');
-      show_wait_process();
       ajax_post("add_or_edit_custom_word", custom_word, function (ret) {
-        hide_wait_process();
         if (ret.code == 0) {
           navmenu('customwords');
         } else {
@@ -962,11 +849,9 @@
         $("#help_div").attr('class', 'col-lg-9');
       } else if (group_type == '2') {
         //初始化下拉框
-        console.log("yes")
         $("#season_div").show();
         $("#help_div").attr('class', 'col-lg-6');
-        $("#custom_word_season").empty();
-        $("#custom_word_season").append('<option value="-1" selected>全部</option>');
+        $("#custom_word_season").empty().append('<option value="-1" selected>全部</option>');
         for (let i = 0; i <= seasons; i++) {
           $("#custom_word_season").append(`<option value="${i}">第${i}季</option>`);
         }
@@ -1005,10 +890,8 @@
         $("#front_div").attr('class', 'col-lg-4');
         $("#back_div").attr('class', 'col-lg-4');
         $("#custom_word_enabled_2").val($("#custom_word_enabled_1").val());
-        $("#enable_row2_div").val("1");
-        $("#enable_row2_div").show();
-        $("#custom_word_regex").val("1");
-        $("#custom_word_regex").attr("disabled", "disabled");
+        $("#enable_row2_div").val("1").show();
+        $("#custom_word_regex").val("1").attr("disabled", "disabled");
         $("#type_offset").prop("checked", true);
       }
       else if (type == '3') {
@@ -1021,10 +904,8 @@
         if ($("#enable_row2_div").val() == "1") {
           $("#custom_word_enabled_1").val($("#custom_word_enabled_2").val());
         }
-        $("#enable_row2_div").val("0");
-        $("#enable_row2_div").hide();
-        $("#custom_word_regex").val("1");
-        $("#custom_word_regex").attr("disabled", "disabled");
+        $("#enable_row2_div").val("0").hide();
+        $("#custom_word_regex").val("1").attr("disabled", "disabled");
         $("#type_replaced_offset").prop("checked", true);
       }
     }

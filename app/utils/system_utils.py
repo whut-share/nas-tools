@@ -3,10 +3,12 @@ import os
 import platform
 import shutil
 import subprocess
+import re
 
-from app.utils import PathUtils
+from app.utils.path_utils import PathUtils
 from app.utils.exception_utils import ExceptionUtils
 from app.utils.types import OsType
+from config import WEBDRIVER_PATH, RMT_MEDIAEXT
 
 
 class SystemUtils:
@@ -99,6 +101,8 @@ class SystemUtils:
 
     @staticmethod
     def is_synology():
+        if SystemUtils.is_windows():
+            return False
         return True if "synology" in SystemUtils.execute('uname -a') else False
         
     @staticmethod
@@ -108,6 +112,18 @@ class SystemUtils:
     @staticmethod
     def is_macos():
         return True if platform.system() == 'Darwin' else False
+
+    @staticmethod
+    def is_lite_version():
+        return True if SystemUtils.is_docker() \
+                       and os.environ.get("NASTOOL_VERSION") == "lite" else False
+
+    @staticmethod
+    def get_webdriver_path():
+        if SystemUtils.is_lite_version():
+            return None
+        else:
+            return WEBDRIVER_PATH.get(SystemUtils.get_system().value)
 
     @staticmethod
     def copy(src, dest):
@@ -146,8 +162,9 @@ class SystemUtils:
                 # 兼容极空间Z4
                 tmp = os.path.normpath(os.path.join(PathUtils.get_parent_paths(dest, 2),
                                                     os.path.basename(dest)))
-                os.link(os.path.normpath(src), tmp)
-                shutil.move(tmp, os.path.normpath(dest))
+                os.system('ln "%s" "%s" ; mv "%s" "%s"' % (os.path.normpath(src), tmp, tmp, os.path.normpath(dest)))
+                # os.link(os.path.normpath(src), tmp)
+                # shutil.move(tmp, os.path.normpath(dest))
             else:
                 os.link(os.path.normpath(src), os.path.normpath(dest))
             return 0, ""

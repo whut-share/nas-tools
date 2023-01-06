@@ -5,21 +5,23 @@ import requests
 
 import log
 from app.helper import ThreadHelper
-from app.message.message_client import IMessageClient
-from app.utils import RequestUtils
-from app.utils.exception_utils import ExceptionUtils
+from app.message.client._base import _IMessageClient
+from app.utils import RequestUtils, ExceptionUtils
 from config import Config
 
 lock = Lock()
 WEBHOOK_STATUS = False
 
 
-class Telegram(IMessageClient):
+class Telegram(_IMessageClient):
+    schema = "telegram"
+
     _telegram_token = None
     _telegram_chat_id = None
     _webhook = None
     _webhook_url = None
     _telegram_user_ids = []
+    _telegram_admin_ids = []
     _domain = None
     _config = None
     _message_proxy_event = None
@@ -27,10 +29,10 @@ class Telegram(IMessageClient):
     _interactive = False
     _enabled = True
 
-    def __init__(self, config, interactive=False):
+    def __init__(self, config):
         self._config = Config()
         self._client_config = config
-        self._interactive = interactive
+        self._interactive = config.get("interactive")
         self._domain = self._config.get_domain()
         if self._domain and self._domain.endswith("/"):
             self._domain = self._domain[:-1]
@@ -41,11 +43,13 @@ class Telegram(IMessageClient):
             self._telegram_token = self._client_config.get('token')
             self._telegram_chat_id = self._client_config.get('chat_id')
             self._webhook = self._client_config.get('webhook')
+            telegram_admin_ids = self._client_config.get('admin_ids')
+            if telegram_admin_ids:
+                self._telegram_admin_ids = telegram_admin_ids.split(",")
+            self._telegram_user_ids = self._telegram_admin_ids
             telegram_user_ids = self._client_config.get('user_ids')
             if telegram_user_ids:
-                self._telegram_user_ids = telegram_user_ids.split(",")
-            else:
-                self._telegram_user_ids = []
+                self._telegram_user_ids.extend(telegram_user_ids.split(","))
             if self._telegram_token and self._telegram_chat_id:
                 if self._webhook:
                     if self._domain:
@@ -61,11 +65,21 @@ class Telegram(IMessageClient):
                         self._message_proxy_event = event
                         ThreadHelper().start_thread(self.__start_telegram_message_proxy, [event])
 
-    def get_admin_user(self):
+    @classmethod
+    def match(cls, ctype):
+        return True if ctype == cls.schema else False
+
+    def get_admin(self):
         """
-        获取Telegram配置文件中的ChatId，即管理员用户ID
+        获取允许使用远程命令的user_id列表
         """
-        return str(self._telegram_chat_id)
+        return self._telegram_admin_ids
+
+    def get_users(self):
+        """
+        获取允许使用telegram机器人的user_id列表
+        """
+        return self._telegram_user_ids
 
     def send_msg(self, title, text="", image="", url="", user_id=""):
         """
@@ -84,7 +98,7 @@ class Telegram(IMessageClient):
                 return False, "参数未配置"
 
             # text中的Markdown特殊字符转义
-            text = text.replace("[", "\[").replace("_", "\_").replace("*", "\*").replace("`", "\`")
+            text = text.replace("[", r"\[").replace("_", r"\_").replace("*", r"\*").replace("`", r"\`")
             # 拼装消息内容
             titles = str(title).split('\n')
             if len(titles) > 1:
@@ -103,15 +117,8 @@ class Telegram(IMessageClient):
                 chat_id = user_id
             else:
                 chat_id = self._telegram_chat_id
-            if image:
-                # 发送图文消息
-                values = {"chat_id": chat_id, "photo": image, "caption": caption, "parse_mode": "Markdown"}
-                sc_url = "https://api.telegram.org/bot%s/sendPhoto?" % self._telegram_token
-            else:
-                # 发送文本
-                values = {"chat_id": chat_id, "text": caption, "parse_mode": "Markdown"}
-                sc_url = "https://api.telegram.org/bot%s/sendMessage?" % self._telegram_token
-            return self.__send_request(sc_url, values)
+
+            return self.__send_request(chat_id=chat_id, image=image, caption=caption)
 
         except Exception as msg_e:
             ExceptionUtils.exception_traceback(msg_e)
@@ -150,29 +157,51 @@ class Telegram(IMessageClient):
             else:
                 chat_id = self._telegram_chat_id
 
-            # 发送图文消息
-            values = {"chat_id": chat_id, "photo": image, "caption": caption, "parse_mode": "Markdown"}
-            sc_url = "https://api.telegram.org/bot%s/sendPhoto?" % self._telegram_token
-            return self.__send_request(sc_url, values)
+            return self.__send_request(chat_id=chat_id, image=image, caption=caption)
 
         except Exception as msg_e:
             ExceptionUtils.exception_traceback(msg_e)
             return False, str(msg_e)
 
-    def __send_request(self, sc_url, values):
+    def __send_request(self, chat_id="", image="", caption=""):
         """
         向Telegram发送报文
         """
-        res = RequestUtils(proxies=self._config.get_proxies()).get_res(sc_url + urlencode(values))
-        if res:
-            ret_json = res.json()
-            status = ret_json.get("ok")
-            if status:
-                return True, ""
+        def _res_parse(result):
+            if result:
+                ret_json = result.json()
+                status = ret_json.get("ok")
+                if status:
+                    return True, ""
+                else:
+                    return False, ret_json.get("description")
             else:
-                return False, ret_json.get("description")
-        else:
-            return False, "未获取到返回信息"
+                return False, "未获取到返回信息"
+
+        if image:
+            # 发送图文消息
+            values = {"chat_id": chat_id, "photo": image, "caption": caption, "parse_mode": "Markdown"}
+            sc_url = "https://api.telegram.org/bot%s/sendPhoto?" % self._telegram_token
+            res = RequestUtils(proxies=self._config.get_proxies()).get_res(sc_url + urlencode(values))
+            flag, msg = _res_parse(res)
+            if flag:
+                return flag, msg
+            else:
+                photo_req = RequestUtils(proxies=self._config.get_proxies()).get_res(image)
+                if photo_req and photo_req.content:
+                    sc_url = "https://api.telegram.org/bot%s/sendPhoto" % self._telegram_token
+                    data = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
+                    files = {"photo": photo_req.content}
+                    res = requests.post(sc_url, proxies=self._config.get_proxies(), data=data, files=files)
+                    flag, msg = _res_parse(res)
+                    if flag:
+                        return flag, msg
+        # 发送文本消息
+        values = {"chat_id": chat_id, "text": caption, "parse_mode": "Markdown"}
+        sc_url = "https://api.telegram.org/bot%s/sendMessage?" % self._telegram_token
+        res = RequestUtils(proxies=self._config.get_proxies()).get_res(sc_url + urlencode(values))
+        flag, msg = _res_parse(res)
+        return flag, msg
 
     def __set_bot_webhook(self):
         """
@@ -245,12 +274,6 @@ class Telegram(IMessageClient):
             return True
         else:
             return False
-
-    def get_users(self):
-        """
-        获取Telegram配置文件中的User Ids，即允许使用telegram机器人的user_id列表
-        """
-        return self._telegram_user_ids
 
     def __start_telegram_message_proxy(self, event: Event):
         log.info("Telegram消息接收服务启动")
