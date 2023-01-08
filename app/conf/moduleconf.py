@@ -321,6 +321,28 @@ class ModuleConf(object):
                     }
                 }
             },
+            "chanify": {
+                "name": "Chanify",
+                "img_url": "../static/img/chanify.png",
+                "config": {
+                    "server": {
+                        "id": "chanify_server",
+                        "required": True,
+                        "title": "Chanify服务器地址",
+                        "tooltip": "自己搭建Chanify服务端地址或使用https://api.chanify.net",
+                        "type": "text",
+                        "placeholder": "https://api.chanify.net",
+                        "default": "https://api.chanify.net"
+                    },
+                    "token": {
+                        "id": "chanify_token",
+                        "required": True,
+                        "title": "令牌",
+                        "tooltip": "在Chanify客户端频道中获取",
+                        "type": "text"
+                    }
+                }
+            },
         },
         "switch": {
             "download_start": {
@@ -449,3 +471,42 @@ class ModuleConf(object):
         "qyapi.weixin.qq.com",
         "www.opensubtitles.org"
     ]
+
+    @staticmethod
+    def get_enum_name(enum, value):
+        """
+        根据Enum的value查询name
+        :param enum: 枚举
+        :param value: 枚举值
+        :return: 枚举名或None
+        """
+        for e in enum:
+            if e.value == value:
+                return e.name
+        return None
+
+    @staticmethod
+    def get_enum_item(enum, value):
+        """
+        根据Enum的value查询name
+        :param enum: 枚举
+        :param value: 枚举值
+        :return: 枚举项
+        """
+        for e in enum:
+            if e.value == value:
+                return e
+        return None
+
+    @staticmethod
+    def get_dictenum_key(dictenum, value):
+        """
+        根据Enum dict的value查询key
+        :param dictenum: 枚举字典
+        :param value: 枚举类（字典值）的值
+        :return: 字典键或None
+        """
+        for k, v in dictenum.items():
+            if v.value == value:
+                return k
+        return None
