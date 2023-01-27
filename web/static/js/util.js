@@ -173,7 +173,7 @@ function select_SelectPart(condition, name) {
 }
 
 /**
- * 获取选中元素value
+ * 获取选中input元素value
  * @param: name 被管理checkbox的name
  **/
 function select_GetSelectedVAL(name) {
@@ -187,20 +187,34 @@ function select_GetSelectedVAL(name) {
 }
 
 /**
+ * 获取隐藏input元素value
+ * @param: name 被管理checkbox的name
+ **/
+function select_GetHiddenVAL(name) {
+    let hiddenVAL = [];
+    $(`input[${select_name(name)}][type=hidden]`).each(function () {
+        hiddenVAL.push($(this).val());
+    });
+    return hiddenVAL;
+}
+
+/**
  * 获取元素下input设置
  * @param: id 元素id
  **/
-function input_GetInputVal(id) {
+function input_select_GetVal(id, prefix=null) {
     let params = {};
     $(`#${id} input`).each(function () {
-        let value;
-        const key = $(this).attr("id");
-        if ($(this).attr("type") === "checkbox") {
-            value = !!$(this).prop("checked");
-        } else {
-            value = $(this).val();
+        let key = $(this).attr("id");
+        if (key) {
+            params[(prefix) ? key.replace(prefix, "") : key] = ($(this).attr("type") === "checkbox") ? !!$(this).prop("checked") : $(this).val();
         }
-        params[key] = value;
+    });
+    $(`#${id} select`).each(function () {
+        let key = $(this).attr("id");
+        if (key) {
+            params[(prefix) ? key.replace(prefix, "") : key] = $(this).val();
+        }
     });
     return params;
 }
@@ -252,4 +266,49 @@ function bytesToSize(bytes) {
         size = (bytes / (1024 * 1024 * 1024 * 1024 * 1024)).toFixed(2) + ' PB'
     }
     return size
+}
+
+/**
+ * 暂停
+ * @param: ms 暂停毫秒数
+ **/
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 比较版本号大小，v1大于v2时返回1，相等返回0，否则返回-1
+ */
+function compareVersion(version1, version2) {
+    version1 = version1.split(' ');
+    version2 = version2.split(' ');
+    const c1= version1[1];
+    const c2= version2[1];
+    const v1 = version1[0].replace('v', '').split('.');
+    const v2 = version2[0].replace('v', '').split('.');
+    const len = Math.max(v1.length, v2.length);
+
+    while (v1.length < len) {
+        v1.push('0');
+    }
+    while (v2.length < len) {
+        v2.push('0');
+    }
+
+    for (let i = 0; i < len; i++) {
+        const num1 = parseInt(v1[i]);
+        const num2 = parseInt(v2[i]);
+
+        if (num1 > num2) {
+            return 1;
+        } else if (num1 < num2) {
+            return -1;
+        }
+    }
+
+    if (c1 === c2) {
+        return 0;
+    } else {
+        return 2;
+    }
 }

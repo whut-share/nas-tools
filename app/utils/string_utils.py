@@ -1,4 +1,5 @@
 import bisect
+import hashlib
 import random
 import re
 from urllib import parse
@@ -22,6 +23,8 @@ class StringUtils:
             return 0
         if not isinstance(text, str):
             text = str(text)
+        if text.isdigit():
+            return int(text)
         text = text.replace(",", "").replace(" ", "").upper()
         size = re.sub(r"[KMGTPI]*B?", "", text, flags=re.IGNORECASE)
         try:
@@ -151,7 +154,7 @@ class StringUtils:
         忽略特殊字符
         """
         # 需要忽略的特殊字符
-        CONVERT_EMPTY_CHARS = r"\.|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|（|）|'|’|!|！|,|～|·|:|：|\-|~"
+        CONVERT_EMPTY_CHARS = r"[、.。,，·:：;；!！'’\"“”()（）\[\]【】「」\-——\+\|\\_/&#～~]"
         if not text:
             return ""
         text = re.sub(r"[\u200B-\u200D\uFEFF]", "", re.sub(r"%s" % CONVERT_EMPTY_CHARS, replace_word, text),
@@ -164,22 +167,27 @@ class StringUtils:
     @staticmethod
     def str_filesize(size, pre=2):
         """
-        将字节计算为文件大小描述
+        将字节计算为文件大小描述（带单位的格式化后返回）
         """
-        if not isinstance(size, int) or not isinstance(size, float):
+        size = re.sub(r"\s|B|iB", "", str(size), re.I)
+        if size.replace(".", "").isdigit():
             try:
                 size = float(size)
+                d = [(1024 - 1, 'K'), (1024 ** 2 - 1, 'M'), (1024 ** 3 - 1, 'G'), (1024 ** 4 - 1, 'T')]
+                s = [x[0] for x in d]
+                index = bisect.bisect_left(s, size) - 1
+                if index == -1:
+                    return str(size) + "B"
+                else:
+                    b, u = d[index]
+                return str(round(size / (b + 1), pre)) + u
             except Exception as e:
                 ExceptionUtils.exception_traceback(e)
                 return ""
-        d = [(1024 - 1, 'K'), (1024 ** 2 - 1, 'M'), (1024 ** 3 - 1, 'G'), (1024 ** 4 - 1, 'T')]
-        s = [x[0] for x in d]
-        index = bisect.bisect_left(s, size) - 1
-        if index == -1:
-            return str(size)
+        if re.findall(r"[KMGTP]", size, re.I):
+            return size
         else:
-            b, u = d[index]
-        return str(round(size / (b + 1), pre)) + u
+            return size + "B"
 
     @staticmethod
     def url_equal(url1, url2):
@@ -213,6 +221,8 @@ class StringUtils:
         """
         获取URL的域名部分，不含WWW和HTTP
         """
+        if not url:
+            return ""
         _, netloc = StringUtils.get_url_netloc(url)
         if netloc:
             return netloc.lower().replace("www.", "")
@@ -371,3 +381,34 @@ class StringUtils:
         :return: string title
         """
         return s.title() if s else s
+
+    @staticmethod
+    def md5_hash(data):
+        """
+        MD5 HASH
+        """
+        if not data:
+            return ""
+        return hashlib.md5(str(data).encode()).hexdigest()
+
+    @staticmethod
+    def str_timehours(minutes):
+        """
+        将分钟转换成小时和分钟
+        :param minutes:
+        :return:
+        """
+        if not minutes:
+            return ""
+        hours = minutes // 60
+        minutes = minutes % 60
+        return "%s小时%s分" % (hours, minutes)
+
+    @staticmethod
+    def str_amount(amount, curr="$"):
+        """
+        格式化显示金额
+        """
+        if not amount:
+            return "0"
+        return curr + format(amount, ",")

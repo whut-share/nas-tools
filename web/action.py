@@ -1,6 +1,5 @@
 import base64
 import datetime
-import hashlib
 import importlib
 import json
 import os.path
@@ -23,7 +22,7 @@ from app.downloader.client import Qbittorrent, Transmission
 from app.filetransfer import FileTransfer
 from app.filter import Filter
 from app.helper import DbHelper, ProgressHelper, ThreadHelper, \
-    MetaHelper, DisplayHelper, WordsHelper
+    MetaHelper, DisplayHelper, WordsHelper, CookieCloudHelper
 from app.indexer import Indexer
 from app.media import Category, Media
 from app.media.bangumi import Bangumi
@@ -43,13 +42,15 @@ from app.torrentremover import TorrentRemover
 from app.utils import StringUtils, EpisodeFormat, RequestUtils, PathUtils, \
     SystemUtils, ExceptionUtils, Torrent
 from app.utils.types import RmtMode, OsType, SearchType, DownloaderType, SyncType, MediaType
-from config import RMT_MEDIAEXT, TMDB_IMAGE_W500_URL, TMDB_IMAGE_ORIGINAL_URL, RMT_SUBEXT, Config
+from config import RMT_MEDIAEXT, TMDB_IMAGE_W500_URL, RMT_SUBEXT, Config
 from web.backend.search_torrents import search_medias_for_web, search_media_by_message
+from web.backend.web_utils import WebUtils
 
 
 class WebAction:
     dbhelper = None
     _actions = {}
+    _MovieTypes = ['MOV', '电影']
 
     def __init__(self):
         self.dbhelper = DbHelper()
@@ -199,7 +200,13 @@ class WebAction:
             "list_brushtask_torrents": self.__list_brushtask_torrents,
             "set_system_config": self.__set_system_config,
             "get_site_user_statistics": self.get_site_user_statistics,
-            "send_custom_message": self.send_custom_message
+            "send_custom_message": self.send_custom_message,
+            "cookiecloud_sync": self.__cookiecloud_sync,
+            "media_detail": self.media_detail,
+            "media_similar": self.__media_similar,
+            "media_recommendations": self.__media_recommendations,
+            "media_person": self.__media_person,
+            "person_medias": self.__person_medias
         }
 
     def action(self, cmd, data=None):
@@ -255,7 +262,7 @@ class WebAction:
             os.system("pm2 restart NAStool")
 
     @staticmethod
-    def handle_message_job(msg, client, in_from=SearchType.OT, user_id=None, user_name=None):
+    def handle_message_job(msg, in_from=SearchType.OT, user_id=None, user_name=None):
         """
         处理消息事件
         """
@@ -273,20 +280,10 @@ class WebAction:
         message = Message()
 
         if command:
-            if in_from == SearchType.TG:
-                if str(user_id) not in client.get("client").get_admin():
-                    message.send_channel_msg(channel=in_from, title="只有管理员才有权限执行此命令", user_id=user_id)
-                    return
             # 启动服务
             ThreadHelper().start_thread(command.get("func"), ())
             message.send_channel_msg(channel=in_from, title="正在运行 %s ..." % command.get("desp"), user_id=user_id)
         else:
-            # 检查用户权限
-            if in_from == SearchType.TG:
-                if not str(user_id) in client.get("client").get_users():
-                    message.send_channel_msg(channel=in_from, title="你不在用户白名单中，无法使用此机器人",
-                                             user_id=user_id)
-                    return
             # 站点检索或者添加订阅
             ThreadHelper().start_thread(search_media_by_message, (msg, in_from, user_id, user_name))
 
@@ -417,8 +414,7 @@ class WebAction:
             ThreadHelper().start_thread(commands.get(sch_item), ())
         return {"retmsg": "服务已启动", "item": sch_item}
 
-    @staticmethod
-    def __search(data):
+    def __search(self, data):
         """
         WEB检索资源
         """
@@ -428,7 +424,7 @@ class WebAction:
         tmdbid = data.get("tmdbid")
         media_type = data.get("media_type")
         if media_type:
-            if media_type == "电影":
+            if media_type in self._MovieTypes:
                 media_type = MediaType.MOVIE
             else:
                 media_type = MediaType.TV
@@ -538,11 +534,15 @@ class WebAction:
         if not files and not magnets:
             return {"code": -1, "msg": "没有种子文件或磁链"}
         for file_item in files:
+            if not file_item:
+                continue
             file_name = file_item.get("upload", {}).get("filename")
             file_path = os.path.join(Config().get_temp_path(), file_name)
             media_info = Media().get_media_info(title=file_name)
             __download(media_info, file_path)
         for magnet in magnets:
+            if not magnet:
+                continue
             file_path = None
             title = Torrent().get_magnet_title(magnet)
             if title:
@@ -903,6 +903,10 @@ class WebAction:
             if not os.path.exists(file):
                 return False, f"{file} 不存在"
             os.remove(file)
+            nfoname = f"{os.path.splitext(filename)[0]}.nfo"
+            nfofile = os.path.join(filedir, nfoname)
+            if os.path.exists(nfofile):
+                os.remove(nfofile)
             # 检查空目录并删除
             if re.findall(r"^S\d{2}|^Season", os.path.basename(filedir), re.I):
                 # 当前是季文件夹，判断并删除
@@ -946,17 +950,10 @@ class WebAction:
         """
         检查新版本
         """
-        try:
-            response = RequestUtils(proxies=Config().get_proxies()).get_res(
-                "https://api.github.com/repos/jxxghp/nas-tools/releases/latest")
-            if response:
-                ver_json = response.json()
-                version = ver_json["tag_name"]
-                info = f'<a href="{ver_json["html_url"]}" target="_blank">{version}</a>'
-                return {"code": 0, "version": version, "info": info}
-        except Exception as e:
-            ExceptionUtils.exception_traceback(e)
-        return {"code": -1, "version": "", "info": ""}
+        version, url, flag = WebUtils.get_latest_version()
+        if flag:
+            return {"code": 0, "version": version, "url": url}
+        return {"code": -1, "version": "", "url": ""}
 
     def __update_site(self, data):
         """
@@ -1056,13 +1053,10 @@ class WebAction:
         statistic = True if data.get("statistic") else False
         basic = True if data.get("basic") else False
         if basic:
-            sites = [{
-                "id": site.get("id"),
-                "name": site.get("name")
-            } for site in Sites().get_sites(rss=rss,
-                                            brush=brush,
-                                            signin=signin,
-                                            statistic=statistic)]
+            sites = Sites().get_site_dict(rss=rss,
+                                          brush=brush,
+                                          signin=signin,
+                                          statistic=statistic)
         else:
             sites = Sites().get_sites(rss=rss,
                                       brush=brush,
@@ -1283,7 +1277,7 @@ class WebAction:
         if name:
             name = MetaInfo(title=name).get_name()
         if mtype:
-            if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'dbtop', 'MOV', '电影']:
+            if mtype in self._MovieTypes:
                 self.dbhelper.delete_rss_movie(title=name, year=year, rssid=rssid, tmdbid=tmdbid)
             else:
                 self.dbhelper.delete_rss_tv(title=name, season=season, rssid=rssid, tmdbid=tmdbid)
@@ -1297,10 +1291,10 @@ class WebAction:
         _subscribe = Subscribe()
         mtype = data.get("type")
         year = data.get("year")
+        keyword = data.get("keyword")
         season = data.get("season")
         fuzzy_match = data.get("fuzzy_match")
-        doubanid = data.get("doubanid")
-        tmdbid = data.get("tmdbid")
+        mediaid = data.get("mediaid")
         rss_sites = data.get("rss_sites")
         search_sites = data.get("search_sites")
         over_edition = data.get("over_edition")
@@ -1314,11 +1308,7 @@ class WebAction:
         current_ep = data.get("current_ep")
         rssid = data.get("rssid")
         page = data.get("page")
-        if name and mtype:
-            if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'dbtop', 'MOV', '电影']:
-                mtype = MediaType.MOVIE
-            else:
-                mtype = MediaType.TV
+        mtype = MediaType.MOVIE if mtype in self._MovieTypes else MediaType.TV
         if isinstance(season, list):
             code = 0
             msg = ""
@@ -1326,10 +1316,10 @@ class WebAction:
                 code, msg, media_info = _subscribe.add_rss_subscribe(mtype=mtype,
                                                                      name=name,
                                                                      year=year,
+                                                                     keyword=keyword,
                                                                      season=sea,
                                                                      fuzzy_match=fuzzy_match,
-                                                                     doubanid=doubanid,
-                                                                     tmdbid=tmdbid,
+                                                                     mediaid=mediaid,
                                                                      rss_sites=rss_sites,
                                                                      search_sites=search_sites,
                                                                      over_edition=over_edition,
@@ -1346,10 +1336,10 @@ class WebAction:
             code, msg, media_info = _subscribe.add_rss_subscribe(mtype=mtype,
                                                                  name=name,
                                                                  year=year,
+                                                                 keyword=keyword,
                                                                  season=season,
                                                                  fuzzy_match=fuzzy_match,
-                                                                 doubanid=doubanid,
-                                                                 tmdbid=tmdbid,
+                                                                 mediaid=mediaid,
                                                                  rss_sites=rss_sites,
                                                                  search_sites=search_sites,
                                                                  over_edition=over_edition,
@@ -1364,9 +1354,9 @@ class WebAction:
                                                                  rssid=rssid)
         if not rssid:
             if mtype == MediaType.MOVIE:
-                rssid = self.dbhelper.get_rss_movie_id(title=name, tmdbid=tmdbid or "DB:%s" % doubanid)
+                rssid = self.dbhelper.get_rss_movie_id(title=name, tmdbid=mediaid)
             else:
-                rssid = self.dbhelper.get_rss_tv_id(title=name, tmdbid=tmdbid or "DB:%s" % doubanid)
+                rssid = self.dbhelper.get_rss_tv_id(title=name, tmdbid=mediaid)
         return {"code": code, "msg": msg, "page": page, "name": name, "rssid": rssid}
 
     def __re_identification(self, data):
@@ -1430,12 +1420,11 @@ class WebAction:
         """
         查询媒体信息
         """
-        tmdbid = data.get("id")
+        mediaid = data.get("id")
         mtype = data.get("type")
         title = data.get("title")
         year = data.get("year")
         page = data.get("page")
-        doubanid = data.get("doubanid")
         rssid = data.get("rssid")
         seasons = []
         link_url = ""
@@ -1444,7 +1433,7 @@ class WebAction:
         release_date = ""
         overview = ""
         # 类型
-        if mtype in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm', 'dbtop', 'MOV', '电影']:
+        if mtype in self._MovieTypes:
             media_type = MediaType.MOVIE
         else:
             media_type = MediaType.TV
@@ -1476,61 +1465,40 @@ class WebAction:
 
         # 订阅信息不足
         if not rssid_ok:
-            # 如果是豆瓣
-            if doubanid:
-                link_url = "https://movie.douban.com/subject/%s" % doubanid
-                douban_info = DouBan().get_douban_detail(doubanid=doubanid, mtype=media_type)
-                if not douban_info:
-                    return {
-                        "code": 1,
-                        "retmsg": "无法查询到豆瓣信息",
-                        "link_url": link_url,
-                        "rssid": rssid,
-                        "type_str": media_type.value
-                    }
-                overview = douban_info.get("intro")
-                poster_path = douban_info.get("cover_url")
-                title = douban_info.get("title")
-                rating = douban_info.get("rating", {}) or {}
-                vote_average = rating.get("value") or ""
-                release_date = douban_info.get("pubdate")
-                year = douban_info.get("year")
+            if mediaid:
+                media = WebUtils.get_mediainfo_from_id(mtype=media_type, mediaid=mediaid)
             else:
-                if tmdbid:
-                    media = MetaInfo(title=title, mtype=media_type)
-                    media.set_tmdb_info(Media().get_tmdb_info(mtype=media_type, tmdbid=tmdbid))
-                else:
-                    media = Media().get_media_info(title=f"{title} {year}", mtype=media_type)
-                if not media or not media.tmdb_info:
-                    return {
-                        "code": 1,
-                        "retmsg": "无法查询到TMDB信息",
-                        "rssid": rssid,
-                        "type_str": media_type.value
-                    }
-                if not tmdbid:
-                    tmdbid = media.tmdb_id
-                link_url = media.get_detail_url()
-                overview = media.overview
-                poster_path = media.get_poster_image()
-                title = media.title
-                vote_average = round(float(media.vote_average or 0), 1)
-                year = media.year
-                if media_type != MediaType.MOVIE:
-                    release_date = media.tmdb_info.get('first_air_date')
-                    seasons = [{
-                        "text": "第%s季" % cn2an.an2cn(season.get("season_number"), mode='low'),
-                        "num": season.get("season_number")} for season in
-                        Media().get_tmdb_seasons_list(tv_info=media.tmdb_info)]
-                else:
-                    release_date = media.tmdb_info.get('release_date')
+                media = Media().get_media_info(title=f"{title} {year}", mtype=media_type)
+            if not media or not media.tmdb_info:
+                return {
+                    "code": 1,
+                    "retmsg": "无法查询到TMDB信息",
+                    "rssid": rssid,
+                    "type_str": media_type.value
+                }
+            if not mediaid:
+                mediaid = media.tmdb_id
+            link_url = media.get_detail_url()
+            overview = media.overview
+            poster_path = media.get_poster_image()
+            title = media.title
+            vote_average = round(float(media.vote_average or 0), 1)
+            year = media.year
+            if media_type != MediaType.MOVIE:
+                release_date = media.tmdb_info.get('first_air_date')
+                seasons = [{
+                    "text": "第%s季" % cn2an.an2cn(season.get("season_number"), mode='low'),
+                    "num": season.get("season_number")} for season in
+                    Media().get_tmdb_tv_seasons(tv_info=media.tmdb_info)]
+            else:
+                release_date = media.tmdb_info.get('release_date')
 
-                # 查订阅信息
-                if not rssid:
-                    if media_type == MediaType.MOVIE:
-                        rssid = self.dbhelper.get_rss_movie_id(title=title, tmdbid=tmdbid or "DB:%s" % doubanid)
-                    else:
-                        rssid = self.dbhelper.get_rss_tv_id(title=title, tmdbid=tmdbid or "DB:%s" % doubanid)
+            # 查订阅信息
+            if not rssid:
+                if media_type == MediaType.MOVIE:
+                    rssid = self.dbhelper.get_rss_movie_id(title=title, tmdbid=mediaid)
+                else:
+                    rssid = self.dbhelper.get_rss_tv_id(title=title, tmdbid=mediaid)
 
         return {
             "code": 0,
@@ -1544,8 +1512,7 @@ class WebAction:
             "year": year,
             "overview": overview,
             "link_url": link_url,
-            "tmdbid": tmdbid,
-            "doubanid": doubanid,
+            "tmdbid": mediaid,
             "rssid": rssid,
             "seasons": seasons
         }
@@ -1703,7 +1670,10 @@ class WebAction:
                         "rssid": rssid
                         }
         else:
-            tmdb_info = Media().get_tmdb_info(mtype=MediaType.MOVIE, tmdbid=tid)
+            if tid:
+                tmdb_info = Media().get_tmdb_info(mtype=MediaType.MOVIE, tmdbid=tid)
+            else:
+                return {"code": 1, "retmsg": "没有TMDBID信息"}
             if not tmdb_info:
                 return {"code": 1, "retmsg": "无法查询到TMDB信息"}
             poster_path = TMDB_IMAGE_W500_URL % tmdb_info.get('poster_path') if tmdb_info.get(
@@ -1758,7 +1728,10 @@ class WebAction:
                         "rssid": rssid
                         }
         else:
-            tmdb_info = Media().get_tmdb_tv_season_detail(tmdbid=tid, season=season)
+            if tid:
+                tmdb_info = Media().get_tmdb_tv_season_detail(tmdbid=tid, season=season)
+            else:
+                return {"code": 1, "retmsg": "没有TMDBID信息"}
             if not tmdb_info:
                 return {"code": 1, "retmsg": "无法查询到TMDB信息"}
             episode_events = []
@@ -1792,11 +1765,10 @@ class WebAction:
                 })
             return {"code": 0, "events": episode_events}
 
-    @staticmethod
-    def __rss_detail(data):
+    def __rss_detail(self, data):
         rid = data.get("rssid")
         mtype = data.get("rsstype")
-        if mtype in ['nm', 'hm', 'dbom', 'dbhm', 'dbnm', 'dbtop', 'MOV', '电影']:
+        if mtype in self._MovieTypes:
             rssdetail = Subscribe().get_subscribe_movies(rid=rid)
             if not rssdetail:
                 return {"code": 1}
@@ -2239,125 +2211,91 @@ class WebAction:
         return {"code": 0, "info": ruleinfo}
 
     def get_recommend(self, data):
-        RecommendType = data.get("type")
+        Type = data.get("type")
+        SubType = data.get("subtype")
         CurrentPage = data.get("page")
         if not CurrentPage:
             CurrentPage = 1
         else:
             CurrentPage = int(CurrentPage)
-        if RecommendType == "hm":
+
+        if SubType == "hm":
             # TMDB热门电影
             res_list = Media().get_tmdb_hot_movies(CurrentPage)
-        elif RecommendType == "ht":
+        elif SubType == "ht":
             # TMDB热门电视剧
             res_list = Media().get_tmdb_hot_tvs(CurrentPage)
-        elif RecommendType == "nm":
+        elif SubType == "nm":
             # TMDB最新电影
             res_list = Media().get_tmdb_new_movies(CurrentPage)
-        elif RecommendType == "nt":
+        elif SubType == "nt":
             # TMDB最新电视剧
             res_list = Media().get_tmdb_new_tvs(CurrentPage)
-        elif RecommendType == "dbom":
+        elif SubType == "dbom":
             # 豆瓣正在上映
             res_list = DouBan().get_douban_online_movie(CurrentPage)
-        elif RecommendType == "dbhm":
+        elif SubType == "dbhm":
             # 豆瓣热门电影
             res_list = DouBan().get_douban_hot_movie(CurrentPage)
-        elif RecommendType == "dbht":
+        elif SubType == "dbht":
             # 豆瓣热门电视剧
             res_list = DouBan().get_douban_hot_tv(CurrentPage)
-        elif RecommendType == "dbdh":
+        elif SubType == "dbdh":
             # 豆瓣热门动画
             res_list = DouBan().get_douban_hot_anime(CurrentPage)
-        elif RecommendType == "dbnm":
+        elif SubType == "dbnm":
             # 豆瓣最新电影
             res_list = DouBan().get_douban_new_movie(CurrentPage)
-        elif RecommendType == "dbtop":
+        elif SubType == "dbtop":
             # 豆瓣TOP250电影
             res_list = DouBan().get_douban_top250_movie(CurrentPage)
-        elif RecommendType == "dbzy":
+        elif SubType == "dbzy":
             # 豆瓣最新电视剧
             res_list = DouBan().get_douban_hot_show(CurrentPage)
-        elif RecommendType == "bangumi":
+        elif SubType == "sim":
+            TmdbId = data.get("tmdbid")
+            res_list = self.__media_similar({
+                "tmdbid": TmdbId,
+                "page": CurrentPage,
+                "type": "MOV" if Type == "MOV" else "TV"
+            }).get("data")
+        elif SubType == "more":
+            TmdbId = data.get("tmdbid")
+            res_list = self.__media_recommendations({
+                "tmdbid": TmdbId,
+                "page": CurrentPage,
+                "type": "MOV" if Type == "MOV" else "TV"
+            }).get("data")
+        elif SubType == "person":
+            PersonId = data.get("personid")
+            res_list = self.__person_medias({
+                "personid": PersonId,
+                "type": "MOV" if Type == "MOV" else "TV",
+                "page": CurrentPage
+            }).get("data")
+        elif Type == "BANGUMI":
             # Bangumi每日放送
-            res_list = Bangumi().get_bangumi_calendar(CurrentPage)
+            Week = data.get("week")
+            res_list = Bangumi().get_bangumi_calendar(page=CurrentPage, week=Week)
+        elif Type == "SEARCH":
+            # 搜索词条
+            Keyword = data.get("keyword")
+            medias = WebUtils.search_media_infos(keyword=Keyword, page=CurrentPage)
+            res_list = [media.to_dict() for media in medias]
         else:
             res_list = []
-
-        Items = []
+        # 修正数据
+        filetransfer = FileTransfer()
         for res in res_list:
-            rid = res.get('id')
-            orgid = rid
-            if RecommendType in ['hm', 'nm', 'dbom', 'dbhm', 'dbnm', 'dbtop']:
-                title = res.get('title')
-                date = res.get('release_date')
-                if date:
-                    year = date[0:4]
-                else:
-                    year = ''
-                name = MetaInfo(title).get_name()
-                if RecommendType not in ['hm', 'nm']:
-                    rid = "DB:%s" % rid
-                rssid = self.dbhelper.get_rss_movie_id(title=name, tmdbid=rid)
-                if rssid:
-                    # 已订阅
-                    fav = 1
-                elif MediaServer().check_item_exists(title=name, year=year, tmdbid=rid):
-                    # 已下载
-                    fav = 2
-                else:
-                    # 未订阅、未下载
-                    fav = 0
-            else:
-                title = res.get('name')
-                date = res.get('first_air_date')
-                if date:
-                    year = date[0:4]
-                else:
-                    year = ''
-                name = MetaInfo(title).get_name()
-                if RecommendType in ['bangumi']:
-                    rid = "BG:%s" % rid
-                elif RecommendType not in ['ht', 'nt']:
-                    rid = "DB:%s" % rid
-                rssid = self.dbhelper.get_rss_tv_id(title=name, tmdbid=rid)
-                if rssid:
-                    # 已订阅
-                    fav = 1
-                elif MediaServer().check_item_exists(title=name, tmdbid=rid):
-                    # 已下载
-                    fav = 2
-                else:
-                    # 未订阅、未下载
-                    fav = 0
-            image = res.get('poster_path')
-            if RecommendType in ['hm', 'nm', 'ht', 'nt']:
-                image = TMDB_IMAGE_ORIGINAL_URL % image if image else ""
-            else:
-                # 替换图片分辨率
-                image = image.replace("s_ratio_poster", "m_ratio_poster")
-            vote = res.get('vote_average')
-            if vote:
-                try:
-                    vote = str(round(float(vote), 1))
-                except Exception as err:
-                    print(str(err))
-
-            overview = res.get('overview')
-            item = {'id': rid,
-                    'orgid': orgid,
-                    'title': title,
-                    'fav': fav,
-                    'date': date,
-                    'vote': vote,
-                    'image': image,
-                    'overview': overview,
-                    'year': year,
-                    'rssid': rssid,
-                    'weekday': res.get("weekday"),
-                    'url': res.get("url")}
-            Items.append(item)
-        return {"code": 0, "Items": Items}
+            fav, rssid = filetransfer.get_media_exists_flag(mtype=Type,
+                                                            title=res.get("title"),
+                                                            year=res.get("year"),
+                                                            tmdbid=res.get("rid"))
+            res.update({
+                'fav': fav,
+                'rssid': rssid
+            })
+        return {"code": 0, "Items": res_list}
 
     def get_downloaded(self, data):
         page = data.get("page")
@@ -2461,10 +2399,6 @@ class WebAction:
         return "<br>".join(rule_htmls)
 
     @staticmethod
-    def str_filesize(size):
-        return StringUtils.str_filesize(size, pre=1)
-
-    @staticmethod
     def __clear_tmdb_cache(data):
         """
         清空TMDB缓存
@@ -2556,7 +2490,7 @@ class WebAction:
         seasons = [
             {"text": "第%s季" % cn2an.an2cn(season.get("season_number"), mode='low'),
              "num": season.get("season_number")}
-            for season in Media().get_tmdb_seasons_list(tmdbid=tmdbid)]
+            for season in Media().get_tmdb_tv_seasons_byid(tmdbid=tmdbid)]
         return {"code": 0, "seasons": seasons}
 
     @staticmethod
@@ -2581,21 +2515,37 @@ class WebAction:
         """
         新增或修改自定义订阅
         """
+        uses = data.get("uses")
         params = {
             "id": data.get("id"),
             "name": data.get("name"),
             "address": data.get("address"),
             "parser": data.get("parser"),
             "interval": data.get("interval"),
-            "uses": data.get("uses"),
+            "uses": uses,
             "include": data.get("include"),
             "exclude": data.get("exclude"),
-            "filterrule": data.get("filterrule"),
+            "filter_rule": data.get("rule"),
             "state": data.get("state"),
             "save_path": data.get("save_path"),
             "download_setting": data.get("download_setting"),
-            "note": json.dumps({"recognization": data.get("recognization")})
         }
+        if uses == "D":
+            params.update({
+                "recognization": data.get("recognization")
+            })
+        elif uses == "R":
+            params.update({
+                "over_edition": data.get("over_edition"),
+                "sites": data.get("sites"),
+                "filter_args": {
+                    "restype": data.get("restype"),
+                    "pix": data.get("pix"),
+                    "team": data.get("team")
+                }
+            })
+        else:
+            return {"code": 1}
         if self.dbhelper.update_userrss_task(params):
             RssChecker().init_config()
             return {"code": 0}
@@ -2659,10 +2609,11 @@ class WebAction:
 
     @staticmethod
     def __list_rss_articles(data):
+        uses = RssChecker().get_rsstask_info(taskid=data.get("id")).get("uses")
         articles = RssChecker().get_rss_articles(data.get("id"))
         count = len(articles)
         if articles:
-            return {"code": 0, "data": articles, "count": count}
+            return {"code": 0, "data": articles, "count": count, "uses": uses}
         else:
             return {"code": 1, "msg": "未获取到报文"}
 
@@ -3094,7 +3045,7 @@ class WebAction:
                                                          name=rssinfo[0].NAME,
                                                          year=rssinfo[0].YEAR,
                                                          season=season,
-                                                         tmdbid=rssinfo[0].TMDBID,
+                                                         mediaid=rssinfo[0].TMDBID,
                                                          total_ep=rssinfo[0].TOTAL,
                                                          current_ep=rssinfo[0].START)
             return {"code": code, "msg": msg}
@@ -3490,39 +3441,12 @@ class WebAction:
         """
         根据关键字搜索相似词条
         """
-        medias = []
         SearchWord = data.get("keyword")
         if not SearchWord:
             return []
         SearchSourceType = data.get("searchtype")
-        if SearchSourceType == "tmdb":
-            use_douban_titles = False
-        else:
-            use_douban_titles = Config().get_config("laboratory").get("use_douban_titles")
-        _mediaserver = MediaServer()
-        if use_douban_titles:
-            _, key_word, season_num, episode_num, _, _ = StringUtils.get_keyword_from_string(SearchWord)
-            medias = DouBan().search_douban_medias(keyword=key_word,
-                                                   season=season_num,
-                                                   episode=episode_num)
-            for media in medias:
-                if _mediaserver.check_item_exists(title=media.title, year=media.year, tmdbid=media.tmdb_id):
-                    media.fav = 2
-        else:
-            meta_info = MetaInfo(title=SearchWord)
-            tmdbinfos = Media().get_tmdb_infos(title=meta_info.get_name(), year=meta_info.year, num=20)
-            for tmdbinfo in tmdbinfos:
-                tmp_info = MetaInfo(title=SearchWord)
-                tmp_info.set_tmdb_info(tmdbinfo)
-                if meta_info.type == MediaType.TV and tmp_info.type != MediaType.TV:
-                    continue
-                if _mediaserver.check_item_exists(title=tmp_info.title, year=tmp_info.year, tmdbid=tmp_info.tmdb_id):
-                    tmp_info.fav = 2
-                if tmp_info.begin_season:
-                    tmp_info.title = "%s 第%s季" % (tmp_info.title, cn2an.an2cn(meta_info.begin_season, mode='low'))
-                if tmp_info.begin_episode:
-                    tmp_info.title = "%s 第%s集" % (tmp_info.title, meta_info.begin_episode)
-                medias.append(tmp_info)
+        medias = WebUtils.search_media_infos(keyword=SearchWord,
+                                             source=SearchSourceType)
 
         return {"code": 0, "result": [media.to_dict() for media in medias]}
 
@@ -3552,69 +3476,11 @@ class WebAction:
         """
         查询正在下载的任务
         """
-        Client, Torrents = Downloader().get_downloading_torrents()
-        DispTorrents = []
-        for torrent in Torrents:
-            if Client == DownloaderType.QB:
-                name = torrent.get('name')
-                # 进度
-                progress = round(torrent.get('progress') * 100, 1)
-                if torrent.get('state') in ['pausedDL']:
-                    state = "Stoped"
-                    speed = "已暂停"
-                else:
-                    state = "Downloading"
-                    dlspeed = StringUtils.str_filesize(torrent.get('dlspeed'))
-                    upspeed = StringUtils.str_filesize(torrent.get('upspeed'))
-                    if progress >= 100:
-                        speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
-                    else:
-                        eta = StringUtils.str_timelong(torrent.get('eta'))
-                        speed = "%s%sB/s %s%sB/s %s" % (chr(8595), dlspeed, chr(8593), upspeed, eta)
-                # 主键
-                key = torrent.get('hash')
-            elif Client == DownloaderType.Client115:
-                name = torrent.get('name')
-                # 进度
-                progress = round(torrent.get('percentDone'), 1)
-                state = "Downloading"
-                dlspeed = StringUtils.str_filesize(torrent.get('peers'))
-                upspeed = StringUtils.str_filesize(torrent.get('rateDownload'))
-                speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
-                # 主键
-                key = torrent.get('info_hash')
-            elif Client == DownloaderType.Aria2:
-                name = torrent.get('bittorrent', {}).get('info', {}).get("name")
-                # 进度
-                try:
-                    progress = round(int(torrent.get('completedLength')) / int(torrent.get("totalLength")), 1) * 100
-                except ZeroDivisionError:
-                    progress = 0.0
-                state = "Downloading"
-                dlspeed = StringUtils.str_filesize(torrent.get('downloadSpeed'))
-                upspeed = StringUtils.str_filesize(torrent.get('uploadSpeed'))
-                speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
-                # 主键
-                key = torrent.get('gid')
-            else:
-                name = torrent.name
-                if torrent.status in ['stopped']:
-                    state = "Stoped"
-                    speed = "已暂停"
-                else:
-                    state = "Downloading"
-                    dlspeed = StringUtils.str_filesize(torrent.rateDownload)
-                    upspeed = StringUtils.str_filesize(torrent.rateUpload)
-                    speed = "%s%sB/s %s%sB/s" % (chr(8595), dlspeed, chr(8593), upspeed)
-                # 进度
-                progress = round(torrent.progress)
-                # 主键
-                key = torrent.id
-
-            if not name:
-                continue
+        torrents = Downloader().get_downloading_progress()
+        MediaHander = Media()
+        for torrent in torrents:
             # 识别
-            media_info = Media().get_media_info(title=name)
+            media_info = MediaHander.get_media_info(title=torrent.get("name"))
             if not media_info:
                 continue
             if not media_info.tmdb_info:
@@ -3626,12 +3492,11 @@ class WebAction:
             else:
                 title = "%s %s" % (media_info.get_title_string(), media_info.get_season_episode_string())
             poster_path = media_info.get_poster_image()
-            torrent_info = {'id': key, 'title': title, 'speed': speed, 'image': poster_path or "", 'state': state,
-                            'progress': progress}
-            if torrent_info not in DispTorrents:
-                DispTorrents.append(torrent_info)
-
-        return {"code": 0, "result": DispTorrents}
+            torrent.update({
+                "title": title,
+                "image": poster_path or ""
+            })
+        return {"code": 0, "result": torrents}
 
     def get_transfer_history(self, data):
         """
@@ -3929,9 +3794,9 @@ class WebAction:
                 del_flag, del_msg = self.delete_media_file(filedir=os.path.dirname(file),
                                                            filename=os.path.basename(file))
                 if not del_flag:
-                    log.error(f"【History】{del_msg}")
+                    log.error(f"【MediaFile】{del_msg}")
                 else:
-                    log.info(f"【History】{del_msg}")
+                    log.info(f"【MediaFile】{del_msg}")
         return {"code": 0}
 
     @staticmethod
@@ -4086,18 +3951,18 @@ class WebAction:
         """
         获取索引器
         """
-        indexers = [{
-            "id": index.id,
-            "name": index.name
-        } for index in Indexer().get_indexers()]
-        return {"code": 0, "indexers": indexers}
+        return {"code": 0, "indexers": Indexer().get_indexer_dict()}
 
     @staticmethod
     def __get_download_dirs(data):
         """
         获取下载目录
         """
-        dirs = Downloader().get_download_dirs(setting=data.get("sid"))
+        sid = data.get("sid")
+        site = data.get("site")
+        if not sid and site:
+            sid = Sites().get_site_download_setting(site_name=site)
+        dirs = Downloader().get_download_dirs(setting=sid)
         return {"code": 0, "paths": dirs}
 
     @staticmethod
@@ -4209,15 +4074,6 @@ class WebAction:
         return {"code": 0}
 
     @staticmethod
-    def md5_hash(data):
-        """
-        MD5 HASH
-        """
-        if not data:
-            return ""
-        return hashlib.md5(str(data).encode()).hexdigest()
-
-    @staticmethod
     def __get_site_favicon(data):
         """
         获取站点图标
@@ -4245,6 +4101,8 @@ class WebAction:
         """
         results = self.dbhelper.get_brushtask_torrents(brush_id=data.get("id"),
                                                        active=False)
+        if not results:
+            return {"code": 1, "msg": "未下载种子或未获取到种子明细"}
         return {"code": 0, "data": [item.as_dict() for item in results]}
 
     @staticmethod
@@ -4258,7 +4116,6 @@ class WebAction:
             return {"code": 1}
         try:
             SystemConfig().set_system_config(key=key, value=value)
-            SystemConfig().init_config()
             return {"code": 0}
         except Exception as e:
             ExceptionUtils.exception_traceback(e)
@@ -4282,7 +4139,7 @@ class WebAction:
                 statistics.sort(key=lambda x: x[sort_by], reverse=True)
         if site_hash == "Y":
             for item in statistics:
-                item["site_hash"] = WebAction.md5_hash(item.get("site"))
+                item["site_hash"] = StringUtils.md5_hash(item.get("site"))
         return {"code": 0, "data": statistics}
 
     @staticmethod
@@ -4303,3 +4160,141 @@ class WebAction:
             "value": value,
             "name": name.value
         } for value, name in RmtModes.items()]
+
+    def __cookiecloud_sync(self, data):
+        """
+        CookieCloud数据同步
+        """
+        server = data.get("server")
+        key = data.get("key")
+        password = data.get("password")
+        # 保存设置
+        SystemConfig().set_system_config(key="CookieCloud",
+                                         value={
+                                             "server": server,
+                                             "key": key,
+                                             "password": password
+                                         })
+        # 同步数据
+        contents, retmsg = CookieCloudHelper(server=server,
+                                             key=key,
+                                             password=password).download_data()
+        if not contents:
+            return {"code": 1, "msg": retmsg}
+        success_count = 0
+        for domain, content_list in contents.items():
+            if domain.startswith('.'):
+                domain = domain[1:]
+            cookie_str = ""
+            for content in content_list:
+                cookie_str += content.get("name") + "=" + content.get("value") + ";"
+            if not cookie_str:
+                continue
+            site_info = Sites().get_sites(siteurl=domain)
+            if not site_info:
+                continue
+            self.dbhelper.update_site_cookie_ua(tid=site_info.get("id"),
+                                                cookie=cookie_str)
+            success_count += 1
+        if success_count:
+            # 重载站点信息
+            Sites().init_config()
+            return {"code": 0, "msg": f"成功更新 {success_count} 个站点的Cookie数据"}
+        return {"code": 0, "msg": "同步完成，但未更新任何站点的Cookie！"}
+
+    def media_detail(self, data):
+        """
+        获取媒体详情
+        """
+        # TMDBID 或 DB:豆瓣ID
+        tmdbid = data.get("tmdbid")
+        mtype = MediaType.MOVIE if data.get("type") in self._MovieTypes else MediaType.TV
+        if not tmdbid:
+            return {"code": 1, "msg": "未指定媒体ID"}
+        media_info = WebUtils.get_mediainfo_from_id(mtype=mtype, mediaid=tmdbid)
+        # 检查TMDB信息
+        if not media_info or not media_info.tmdb_info:
+            return {
+                "code": 1,
+                "msg": "无法查询到TMDB信息"
+            }
+        # 查询存在及订阅状态
+        fav, rssid = FileTransfer().get_media_exists_flag(mtype=mtype,
+                                                          title=media_info.title,
+                                                          year=media_info.year,
+                                                          tmdbid=media_info.tmdb_id)
+        MediaHander = Media()
+        return {
+            "code": 0,
+            "data": {
+                "tmdbid": media_info.tmdb_id,
+                "background": MediaHander.get_tmdb_backdrops(tmdbinfo=media_info.tmdb_info),
+                "image": media_info.get_poster_image(),
+                "vote": media_info.vote_average,
+                "year": media_info.year,
+                "title": media_info.title,
+                "genres": MediaHander.get_tmdb_genres_names(tmdbinfo=media_info.tmdb_info),
+                "overview": media_info.overview,
+                "runtime": StringUtils.str_timehours(media_info.runtime),
+                "fact": MediaHander.get_tmdb_factinfo(media_info),
+                "crews": MediaHander.get_tmdb_crews(tmdbinfo=media_info.tmdb_info, nums=6),
+                "actors": MediaHander.get_tmdb_cats(mtype=mtype, tmdbid=media_info.tmdb_id),
+                "link": media_info.get_detail_url(),
+                "fav": fav,
+                "rssid": rssid
+            }
+        }
+
+    def __media_similar(self, data):
+        """
+        查询TMDB相似媒体
+        """
+        tmdbid = data.get("tmdbid")
+        page = data.get("page") or 1
+        mtype = MediaType.MOVIE if data.get("type") in self._MovieTypes else MediaType.TV
+        if not tmdbid:
+            return {"code": 1, "msg": "未指定TMDBID"}
+        if mtype == MediaType.MOVIE:
+            result = Media().get_movie_similar(tmdbid=tmdbid, page=page)
+        else:
+            result = Media().get_tv_similar(tmdbid=tmdbid, page=page)
+        return {"code": 0, "data": result}
+
+    def __media_recommendations(self, data):
+        """
+        查询TMDB同类推荐媒体
+        """
+        tmdbid = data.get("tmdbid")
+        page = data.get("page") or 1
+        mtype = MediaType.MOVIE if data.get("type") in self._MovieTypes else MediaType.TV
+        if not tmdbid:
+            return {"code": 1, "msg": "未指定TMDBID"}
+        if mtype == MediaType.MOVIE:
+            result = Media().get_movie_recommendations(tmdbid=tmdbid, page=page)
+        else:
+            result = Media().get_tv_recommendations(tmdbid=tmdbid, page=page)
+        return {"code": 0, "data": result}
+
+    def __media_person(self, data):
+        """
+        查询TMDB媒体所有演员
+        """
+        tmdbid = data.get("tmdbid")
+        mtype = MediaType.MOVIE if data.get("type") in self._MovieTypes else MediaType.TV
+        if not tmdbid:
+            return {"code": 1, "msg": "未指定TMDBID"}
+        return {"code": 0, "data": Media().get_tmdb_cats(tmdbid=tmdbid,
+                                                         mtype=mtype)}
+
+    def __person_medias(self, data):
+        """
+        查询演员参演作品
+        """
+        personid = data.get("personid")
+        page = data.get("page") or 1
+        mtype = MediaType.MOVIE if data.get("type") in self._MovieTypes else MediaType.TV
+        if not personid:
+            return {"code": 1, "msg": "未指定演员ID"}
+        return {"code": 0, "data": Media().get_person_medias(personid=personid,
+                                                             mtype=mtype,
+                                                             page=page)}

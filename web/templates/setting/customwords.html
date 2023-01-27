@@ -89,6 +89,7 @@
                            onclick="select_SelectALL($(this).prop('checked'), 'custom_words_{{ Group.id }}')">
                  </th>
                   {% endif %}
+                  <th class="w-1"></th>
                   <th>被替换词</th>
                   <th>替换词</th>
                   <th>偏移集数</th>
@@ -107,24 +108,20 @@
                     <input class="form-check-input m-0 align-middle" name="custom_words_{{ Group.id }}"
                            value="{{ Group.id }}_{{ Word.id }}" type="checkbox">
                   </td>
+                  <td><span class="badge bg-{% if Word.enabled == 1 %}green{% else %}red{% endif %}"></span></td>
                   <td>{{ Word.replaced }}</td>
                   <td>{{ Word.replace }}</td>
                   <td>
                     {% if Word.offset %}
-                    <span class="badge badge-outline text-cyan me-1 mb-1" style="vertical-align: middle;">{{ Word.offset
+                    <span class="badge badge-outline text-cyan mb-1" style="vertical-align: middle;">{{ Word.offset
                       }}</span>
                     {% endif %}
                   </td>
                   <td>{{ Word.front }}</td>
                   <td>{{ Word.back }}</td>
                   <td>
-                    {% if Word.enabled == 1 %}
-                    <span class="badge badge-outline text-green me-1 mb-1" style="vertical-align: middle;">启用</span>
-                    {% else %}
-                    <span class="badge badge-outline text-red me-1 mb-1" style="vertical-align: middle;">停用</span>
-                    {% endif %}
                     {% if Word.regex == 1 %}
-                    <span class="badge badge-outline text-blue me-1 mb-1" style="vertical-align: middle;">RegEx</span>
+                    <span class="badge bg-blue mb-1" style="vertical-align: middle;">RegEx</span>
                     {% endif %}
                   </td>
                   <td>
@@ -232,102 +229,102 @@
               </div>
             </div>
           </div>
-          <div class="form-selectgroup-boxes row mb-3">
-            <label class="form-label required">类型</label>
-            <div class="col-lg-3">
-              <div class="mb-1">
-                <label class="form-selectgroup-item" for="type_ignored">
-                  <input type="radio" name="custom_word_type" id="type_ignored" value="1" class="form-selectgroup-input"
-                    checked>
-                  <span class="form-selectgroup-label d-flex align-items-center p-3">
-                    <span class="me-3">
-                      <span class="form-selectgroup-check"></span>
-                    </span>
-                    <span class="form-selectgroup-label-content">
-                      <span class="form-selectgroup-title strong mb-1">屏蔽</span>
-                    </span>
+        <div class="form-selectgroup-boxes row mb-3">
+          <label class="form-label required">类型</label>
+          <div class="col-lg-3">
+            <div class="mb-1">
+              <label class="form-selectgroup-item" for="type_ignored">
+                <input type="radio" name="custom_word_type" id="type_ignored" value="1" class="form-selectgroup-input"
+                  checked>
+                <span class="form-selectgroup-label d-flex align-items-center p-3">
+                  <span class="me-3">
+                    <span class="form-selectgroup-check"></span>
                   </span>
-                </label>
-              </div>
-            </div>
-            <div class="col-lg-3">
-              <div class="mb-1">
-                <label class="form-selectgroup-item" for="type_replaced">
-                  <input type="radio" name="custom_word_type" id="type_replaced" value="2"
-                    class="form-selectgroup-input">
-                  <span class="form-selectgroup-label d-flex align-items-center p-3">
-                    <span class="me-3">
-                      <span class="form-selectgroup-check"></span>
-                    </span>
-                    <span class="form-selectgroup-label-content">
-                      <span class="form-selectgroup-title strong mb-1">替换</span>
-                    </span>
+                  <span class="form-selectgroup-label-content">
+                    <span class="form-selectgroup-title strong mb-1">屏蔽</span>
                   </span>
-                </label>
-              </div>
-            </div>
-            <div class="col-lg-3">
-              <div class="mb-1">
-                <label class="form-selectgroup-item" for="type_replaced_offset">
-                  <input type="radio" name="custom_word_type" id="type_replaced_offset" value="3"
-                    class="form-selectgroup-input">
-                  <span class="form-selectgroup-label d-flex align-items-center p-3">
-                    <span class="me-3">
-                      <span class="form-selectgroup-check"></span>
-                    </span>
-                    <span class="form-selectgroup-label-content">
-                      <span class="form-selectgroup-title strong mb-1">替换+集偏移</span>
-                    </span>
-                  </span>
-                </label>
-              </div>
-            </div>
-            <div class="col-lg-3">
-              <div class="mb-1">
-                <label class="form-selectgroup-item" for="type_offset">
-                  <input type="radio" name="custom_word_type" id="type_offset" value="4" class="form-selectgroup-input">
-                  <span class="form-selectgroup-label d-flex align-items-center p-3">
-                    <span class="me-3">
-                      <span class="form-selectgroup-check"></span>
-                    </span>
-                    <span class="form-selectgroup-label-content">
-                      <span class="form-selectgroup-title strong mb-1">集偏移</span>
-                    </span>
-                  </span>
-                </label>
-              </div>
+                </span>
+              </label>
             </div>
           </div>
-          <div class="row">
-            <div class="col-lg-3" id="regex_div" value="0">
-              <div class="mb-3">
-                <label class="form-label">正则表达式 <span class="form-help" title="使用Python regex模块，集偏移必须使用正则表达式"
-                    data-bs-toggle="tooltip">?</span></label>
-                <select class="form-select" id="custom_word_regex">
-                  <option value="1" selected>使用</option>
-                  <option value="0">不使用</option>
-                </select>
-              </div>
+          <div class="col-lg-3">
+            <div class="mb-1">
+              <label class="form-selectgroup-item" for="type_replaced">
+                <input type="radio" name="custom_word_type" id="type_replaced" value="2"
+                  class="form-selectgroup-input">
+                <span class="form-selectgroup-label d-flex align-items-center p-3">
+                  <span class="me-3">
+                    <span class="form-selectgroup-check"></span>
+                  </span>
+                  <span class="form-selectgroup-label-content">
+                    <span class="form-selectgroup-title strong mb-1">替换</span>
+                  </span>
+                </span>
+              </label>
             </div>
-            <div class="col-lg-3" id="season_div">
-              <div class="mb-3">
-                <label class="form-label">季</label>
-                <select class="form-select" id="custom_word_season">
-                </select>
-              </div>
+          </div>
+          <div class="col-lg-3">
+            <div class="mb-1">
+              <label class="form-selectgroup-item" for="type_replaced_offset">
+                <input type="radio" name="custom_word_type" id="type_replaced_offset" value="3"
+                  class="form-selectgroup-input">
+                <span class="form-selectgroup-label d-flex align-items-center p-3">
+                  <span class="me-3">
+                    <span class="form-selectgroup-check"></span>
+                  </span>
+                  <span class="form-selectgroup-label-content">
+                    <span class="form-selectgroup-title strong mb-1">替换+集偏移</span>
+                  </span>
+                </span>
+              </label>
             </div>
-            <div class="col-lg-9" id="help_div">
-              <div class="mb-3">
-                <label class="form-label required">备注</label>
-                <textarea class="form-control" id="new_help" rows="1" placeholder=""></textarea>
-              </div>
+          </div>
+          <div class="col-lg-3">
+            <div class="mb-1">
+              <label class="form-selectgroup-item" for="type_offset">
+                <input type="radio" name="custom_word_type" id="type_offset" value="4" class="form-selectgroup-input">
+                <span class="form-selectgroup-label d-flex align-items-center p-3">
+                  <span class="me-3">
+                    <span class="form-selectgroup-check"></span>
+                  </span>
+                  <span class="form-selectgroup-label-content">
+                    <span class="form-selectgroup-title strong mb-1">集偏移</span>
+                  </span>
+                </span>
+              </label>
             </div>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-link me-auto" data-bs-dismiss="modal">取消</button>
-          <a href="javascript:add_or_edit_custom_word()" class="btn btn-primary">确定</a>
+        <div class="row">
+          <div class="col-lg-3" id="regex_div" value="0">
+            <div class="mb-3">
+              <label class="form-label">正则表达式 <span class="form-help" title="使用Python regex模块，集偏移必须使用正则表达式"
+                  data-bs-toggle="tooltip">?</span></label>
+              <select class="form-select" id="custom_word_regex">
+                <option value="1" selected>使用</option>
+                <option value="0">不使用</option>
+              </select>
+            </div>
+          </div>
+          <div class="col-lg-3" id="season_div">
+            <div class="mb-3">
+              <label class="form-label">季</label>
+              <select class="form-select" id="custom_word_season">
+              </select>
+            </div>
+          </div>
+          <div class="col-lg-9" id="help_div">
+            <div class="mb-3">
+              <label class="form-label required">备注</label>
+              <textarea class="form-control" id="new_help" rows="1" placeholder=""></textarea>
+            </div>
+          </div>
         </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-link me-auto" data-bs-dismiss="modal">取消</button>
+        <a href="javascript:add_or_edit_custom_word()" class="btn btn-primary">确定</a>
+      </div>
       </div>
     </div>
   </div>
@@ -438,7 +435,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-link me-auto" data-bs-dismiss="modal">取消</button>
-          <a id="import_btn" href="javascript:analyse_import_custom_words_code()" class="btn btn-primary">解析分享代码</a>
+          <a id="customword_analyse_btn" href="javascript:analyse_import_custom_words_code()" class="btn btn-primary">解析分享代码</a>
         </div>
       </div>
     </div>
@@ -465,7 +462,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-link me-auto" data-bs-dismiss="modal">取消</button>
-          <a id="import_btn" href="javascript:import_custom_words()" class="btn btn-primary">导入</a>
+          <a id="customword_import_btn" href="javascript:import_custom_words()" class="btn btn-primary">导入</a>
         </div>
       </div>
     </div>
@@ -590,7 +587,7 @@
               tbody_content = `${tbody_content}<tr>${checkbox}${replaced}${replace}${offset}${front}${back}${regex}${note}</tr>`;
             }
             let tbody = `<tbody>${tbody_content}<tr></tr></tbody>`;
-            let table = `<table class="table table-vcenter card-table">${thead}${tbody}</table>`;
+            let table = `<div class="table-responsive"><table class="table table-vcenter card-table">${thead}${tbody}</table><div>`;
             let head;
             if (Group.link) {
               head = `<div class="card-header"><a href="${Group.link}" target="_blank"><h3 class="card-title"><strong>${Group.name}</strong></h3></a></div>`;
@@ -600,6 +597,10 @@
             $("#import_groups_div").append(`${head}${table}`);
           }
           $("#modal-import-custom-words-table").modal('show');
+        } else {
+          show_fail_modal(`解析失败：${ret.msg}`, function () {
+            $("#modal-import-custom-words-code").modal('show');
+          });
         }
       });
     }
@@ -614,7 +615,7 @@
           $("#import_groups_div").empty();
           window_history_refresh();
         } else {
-          show_fail_modal(ret.msg, function() {
+          show_fail_modal(`导入失败！请确认分享代码有效：${ret.msg}`, function() {
             $("#modal-import-custom-words-table").modal('show');
           });
         }

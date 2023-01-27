@@ -102,6 +102,7 @@ class Sites:
                 "signurl": site_signurl,
                 "cookie": site_cookie,
                 "rule": site_note.get("rule"),
+                "download_setting": site_note.get("download_setting"),
                 "parse": site_note.get("parse"),
                 "signin_enable": signin_enable,
                 "rss_enable": rss_enable,
@@ -157,6 +158,43 @@ class Sites:
             return {}
         return ret_sites
 
+    def get_site_dict(self,
+                      rss=False,
+                      brush=False,
+                      signin=False,
+                      statistic=False):
+        """
+        获取站点字典
+        """
+        return [
+            {
+                "id": site.get("id"),
+                "name": site.get("name")
+            } for site in self.get_sites(
+                rss=rss,
+                brush=brush,
+                signin=signin,
+                statistic=statistic
+            )
+        ]
+
+    def get_site_names(self,
+                       rss=False,
+                       brush=False,
+                       signin=False,
+                       statistic=False):
+        """
+        获取站点名称
+        """
+        return [
+            site.get("name") for site in self.get_sites(
+                rss=rss,
+                brush=brush,
+                signin=signin,
+                statistic=statistic
+            )
+        ]
+
     def get_site_favicon(self, site_name=None):
         """
         获取站点图标
@@ -165,6 +203,16 @@ class Sites:
             return self._site_favicons.get(site_name)
         else:
             return self._site_favicons
+
+    def get_site_download_setting(self, site_name=None):
+        """
+        获取站点下载设置
+        """
+        if site_name:
+            for site in self._siteByIds.values():
+                if site.get("name") == site_name:
+                    return site.get("download_setting")
+        return None
 
     def __refresh_all_site_data(self, force=False, specify_sites=None):
         """

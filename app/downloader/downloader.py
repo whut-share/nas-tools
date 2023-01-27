@@ -193,6 +193,8 @@ class Downloader:
             return None, retmsg
 
         # 下载设置
+        if not download_setting and media_info.site:
+            download_setting = self.sites.get_site_download_setting(media_info.site)
         if download_setting:
             download_attr = self.get_download_setting(download_setting) \
                             or self.get_download_setting(self.get_default_download_setting())
@@ -378,6 +380,14 @@ class Downloader:
         except Exception as err:
             ExceptionUtils.exception_traceback(err)
             return self._default_client_type, []
+
+    def get_downloading_progress(self):
+        """
+        查询正在下载中的进度信息
+        """
+        if not self.default_client:
+            return []
+        return self.default_client.get_downloading_progress()
 
     def get_torrents(self, torrent_ids):
         """
@@ -716,7 +726,7 @@ class Downloader:
                         if total_ep.get(season):
                             episode_num = total_ep.get(season)
                         else:
-                            episode_num = self.media.get_tmdb_season_episodes_num(tv_info=tv_info, sea=season)
+                            episode_num = self.media.get_tmdb_season_episodes_num(tv_info=tv_info, season=season)
                         if not episode_num:
                             log.info("【Downloader】%s 第%s季 不存在" % (meta_info.get_title_string(), season))
                             message_list.append("%s 第%s季 不存在" % (meta_info.get_title_string(), season))
@@ -726,7 +736,7 @@ class Downloader:
                             "【Downloader】%s 第%s季 共有 %s 集" % (meta_info.get_title_string(), season, episode_num))
                 else:
                     # 共有多少季，每季有多少季
-                    total_seasons = self.media.get_tmdb_seasons_list(tv_info=tv_info)
+                    total_seasons = self.media.get_tmdb_tv_seasons(tv_info=tv_info)
                     log.info(
                         "【Downloader】%s %s 共有 %s 季" % (
                             meta_info.type.value, meta_info.get_title_string(), len(total_seasons)))

@@ -2,13 +2,12 @@ import datetime
 import os.path
 import re
 import shutil
-import time
 
 from lxml import etree
 
 import log
-from app.helper import OpenSubtitles
 from app.conf import SiteConf
+from app.helper import OpenSubtitles
 from app.utils import RequestUtils, PathUtils, SystemUtils, StringUtils, ExceptionUtils
 from app.utils.commons import singleton
 from app.utils.types import MediaType
@@ -296,14 +295,9 @@ class Subtitle:
                 # 下载
                 ret = request.get_res(sublink)
                 if ret and ret.status_code == 200:
-                    # 检测目录是否存在，等下载器创建
-                    for tim in range(0, 30):
-                        if os.path.exists(download_dir):
-                            break
-                        time.sleep(1)
+                    # 创建目录
                     if not os.path.exists(download_dir):
-                        log.warn("【Subtitle】字幕下载目录不存在：%s" % download_dir)
-                        return
+                        os.makedirs(download_dir)
                     # 保存ZIP
                     file_name = self.__get_url_subtitle_name(ret.headers.get('content-disposition'), sublink)
                     if not file_name:

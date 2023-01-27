@@ -19,6 +19,13 @@
           <a href="javascript:show_site_modal()" class="btn btn-primary d-sm-none btn-icon">
             {{ SVG.plus() }}
           </a>
+          <a href="javascript:show_cookiecloud_modal()" class="btn btn-twitter d-none d-sm-inline-block">
+            {{ SVG.refresh_dot() }}
+            CookieCloud
+          </a>
+          <a href="javascript:show_cookiecloud_modal()" class="btn btn-twitter d-sm-none btn-icon">
+            {{ SVG.refresh_dot() }}
+          </a>
           <a href="javascript:show_sitetest_modal()" class="btn d-none d-sm-inline-block">
             {{ SVG.activity_heartbeat() }}
             站点测试
@@ -74,9 +81,13 @@
               <dt class="col-3">RSS地址:</dt>
               <dd class="col-9">***</dd>
               {% endif %}
-              {% if Site.rule %}
+              {% if Site.rule and Site.rule|string in RuleGroups %}
               <dt class="col-3">过滤规则:</dt>
               <dd class="col-9"><span class="badge bg-orange me-2">{{ RuleGroups[Site.rule|string] }}</span></dd>
+              {% endif %}
+              {% if Site.download_setting and Site.download_setting|string in DownloadSettings %}
+              <dt class="col-3">下载设置:</dt>
+              <dd class="col-9"><span class="badge bg-lime me-2">{{ DownloadSettings[Site.download_setting|string] }}</span></dd>
               {% endif %}
             </dl>
             <div class="row">
@@ -207,24 +218,35 @@
           </div>
           <div class="col-lg-4">
             <div class="mb-3">
+              <label class="form-label required">发送站点未读消息通知 <span class="form-help" title="选择是时检测到站点有未读消息会通过消息推送通知"
+                  data-bs-toggle="tooltip">?</span></label>
+              <select class="form-select" id="site_unread_msg_notify">
+                <option value="Y" selected>是</option>
+                <option value="N">否</option>
+              </select>
+            </div>
+          </div>
+          <div class="col-lg-2">
+            <div class="mb-3">
               <label class="form-label">过滤规则 <span class="form-help"
                   title="选择该站点使用的过滤规则组，在设置->过滤规则中设置规则，选择了过滤规则后该站点只有符合规则的种子才会被命中下载；仅作用于RSS、内建索引自动搜索，刷流等不受此限制"
                   data-bs-toggle="tooltip">?</span></label>
               <select class="form-select" id="site_rule">
-                <option value="" selected>请选择</option>
+                <option value="" selected>默认</option>
                 {% for Id, Attr in RuleGroups.items() %}
                 <option value="{{ Id }}">{{ Attr }}</option>
                 {% endfor %}
               </select>
             </div>
           </div>
-          <div class="col-lg-4">
+          <div class="col-lg-2">
             <div class="mb-3">
-              <label class="form-label required">发送站点未读消息通知 <span class="form-help" title="选择是时检测到站点有未读消息会通过消息推送通知"
-                  data-bs-toggle="tooltip">?</span></label>
-              <select class="form-select" id="site_unread_msg_notify">
-                <option value="Y" selected>是</option>
-                <option value="N">否</option>
+              <label class="form-label">下载设置</label>
+              <select class="form-select" id="site_download_setting">
+                <option value="">默认</option>
+                {% for Id, Attr in DownloadSettings.items() %}
+                <option value="{{ Id }}">{{ Attr }}</option>
+                {% endfor %}
               </select>
             </div>
           </div>
@@ -390,6 +412,52 @@
     </div>
   </div>
 </div>
+<div class="modal modal-blur fade" id="modal-cookiecloud" tabindex="-1" role="dialog" aria-hidden="true"
+     data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="cookieua_modal_title">CookieCloud数据同步</h5>
+        <input type="hidden" id="cookieua_siteid">
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-lg">
+            <div class="mb-3">
+              <label class="form-label required">服务器地址 <span class="form-help"
+                                                              title="参考https://github.com/easychen/CookieCloud搭建私有CookieCloud服务器；也可使用默认的公共服务器，公共服务器不会存储任何非加密用户数据，也不会存储用户KEY、端对端加密密码，但要注意千万不要对外泄露加密信息，否则Cookie数据也会被泄露！"
+                                                              data-bs-toggle="tooltip">?</span></label>
+              <input type="text" value="{{ CookieCloudCfg.server }}" id="cookiecloud_server" class="form-control" placeholder="http://nastool.cn:8088">
+            </div>
+          </div>
+          <div class="col-lg">
+            <div class="mb-3">
+              <label class="form-label required">用户KEY <span class="form-help"
+                                                              title="在浏览器CookieCloud插件中获取，使用公共服务器时注意不要泄露该信息"
+                                                              data-bs-toggle="tooltip">?</span></label>
+              <input type="text" value="{{ CookieCloudCfg.key }}" id="cookiecloud_key" class="form-control" placeholder="">
+            </div>
+          </div>
+          <div class="col-lg">
+            <div class="mb-3">
+              <label class="form-label required">端对端加密密码 <span class="form-help"
+                                                              title="在浏览器CookieCloud插件中获取，使用公共服务器时注意不要泄露该信息"
+                                                              data-bs-toggle="tooltip">?</span></label>
+              <input type="password" value="{{ CookieCloudCfg.password }}" id="cookiecloud_password" class="form-control" placeholder="">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-link link-secondary me-auto" data-bs-dismiss="modal">
+          取消
+        </button>
+        <button onclick="sync_site_cookiecloud()" id="cookiecloud_syncbtn" class="btn btn-primary">开始同步</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal modal-blur fade" id="modal-captcha-code" tabindex="-1" role="dialog" aria-hidden="true"
      data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
@@ -511,6 +579,7 @@
       }
     }
     let site_rule = $("#site_rule").val();
+    let site_download_setting = $("#site_download_setting").val();
     let site_parse = $("#site_parse").val();
     let site_unread_msg_notify = $("#site_unread_msg_notify").val();
     let site_uses = select_GetSelectedVAL("site_uses").join("");
@@ -534,6 +603,7 @@
       "site_include": site_uses,
       "site_note": {
         "rule": site_rule,
+        "download_setting": site_download_setting,
         "parse": site_parse,
         "ua": ua,
         "chrome": chrome,
@@ -556,17 +626,17 @@
   //关闭或者删除
   function close_or_del() {
     $("#modal-site").modal("hide");
-    tid = $("#site_id").val();
+    let tid = $("#site_id").val();
     if (tid) {
       del_site(tid);
     }
   }
 
   //绑定事件
-  $("#add_or_edit_site_btn").click(function () {
+  $("#add_or_edit_site_btn").unbind("click").click(function () {
     add_or_edit_site();
   });
-  $("#site_close_btn").click(function () {
+  $("#site_close_btn").unbind("click").click(function () {
     close_or_del();
   });
 
@@ -588,21 +658,18 @@
     $("#modal-sitetest").modal("show");
   }
 
+  //显示CookieCloud同步对话框
+  function show_cookiecloud_modal() {
+    $("#modal-cookiecloud").modal("show");
+  }
+
   //测试一个站点
-  var total_test_sites = 0
-  var finished_test_sites = 0
-  function test_one_site(siteid) {
+  function test_one_site(siteid, callBack) {
     if (!siteid) {
       return;
     }
-    total_test_sites = total_test_sites + 1;
     ajax_post("test_site", { id: siteid }, function (ret) {
-      finished_test_sites = finished_test_sites + 1;
-      if (finished_test_sites >= total_test_sites) {
-        total_test_sites = 0
-        finished_test_sites = 0
-      }
-      if (ret.code == 0) {
+      if (ret.code === 0) {
         $(`#sitetest_item${siteid}`).html('<span class="badge bg-green me-1 mb-1">是</span>');
         $(`#sitetest_item${siteid}_time`).html(`<span class="text-green">${ret.time} 毫秒</span>`);
         $(`#sitetest_item${siteid}_msg`).html('');
@@ -611,6 +678,7 @@
         $(`#sitetest_item${siteid}_time`).html(`<span class="text-red">${ret.time} 毫秒</span>`);
         $(`#sitetest_item${siteid}_msg`).html(`<span class="text-muted">${ret.msg}</span>`);
       }
+      callBack(true);
     });
   }
 
@@ -672,6 +740,45 @@
       refresh_sitecookie_current = "";
     }, true, false);
 
+  }
+
+  // 同步CookieCloud中的站点Cookie数据
+  function sync_site_cookiecloud(){
+    const server = $("#cookiecloud_server").val();
+    const key = $("#cookiecloud_key").val();
+    const password = $("#cookiecloud_password").val();
+    if (!server) {
+      $("#cookiecloud_server").addClass("is-invalid");
+      return;
+    }else{
+      $("#cookiecloud_server").removeClass("is-invalid");
+    }
+    if (!key) {
+      $("#cookiecloud_key").addClass("is-invalid");
+      return;
+    }else{
+      $("#cookiecloud_key").removeClass("is-invalid");
+    }
+    if (!password) {
+      $("#cookiecloud_password").addClass("is-invalid");
+      return;
+    }else{
+      $("#cookiecloud_password").removeClass("is-invalid");
+    }
+    $("#cookiecloud_syncbtn").text("正在同步...").attr("disabled", true);
+    ajax_post("cookiecloud_sync", { server: server, key: key, password: password }, function (ret) {
+      $("#cookiecloud_syncbtn").text("开始同步").attr("disabled", false);
+      $("#modal-cookiecloud").modal("hide");
+      if (ret.code === 0) {
+        show_success_modal(ret.msg, function (){
+          window_history_refresh();
+        });
+      } else {
+        show_fail_modal(ret.msg, function(){
+          $("#modal-cookiecloud").modal("show");
+        });
+      }
+    });
   }
 
   // 刷新进度标志
@@ -736,7 +843,7 @@
     $("#captcha_code").val("");
     $("#modal-captcha-code").modal("show");
     // 超时关闭
-    setTimeout("sitecookie_captcha_timeout("+siteid+")", 30000);
+    setTimeout(`sitecookie_captcha_timeout(${siteid})`, 30000);
   }
 
   // 输入验证码
@@ -754,7 +861,7 @@
         // 重新刷新状态
         refresh_sitecookie_process_flag = true;
         refresh_sitecookie_fail_count = 0;
-        setTimeout("refresh_sitecookie_process("+refresh_sitecookie_current+")", 2000);
+        setTimeout(`refresh_sitecookie_process(${refresh_sitecookie_current})`, 2000);
         // 关闭框
         $("#modal-captcha-code").modal("hide");
         // 显示原框
@@ -764,13 +871,22 @@
   }
 
   // 站点测试按钮
-  $("#sitetest_btn").click(function () {
+  $("#sitetest_btn").unbind("click").click(async function () {
+    let btn_obj = $(this);
     let siteids = select_GetSelectedVAL("test_sites_item");
-    $("#sitetest_btn").text("测试中...").attr("disabled", true);
+    let sitetest_count_totol = siteids.length;
+    let sitetest_count_finished = 0;
+    btn_obj.text("测试中...").attr("disabled", true);
     for (let siteid of siteids) {
-      test_one_site(siteid);
+      test_one_site(siteid, ret=>{
+        if (ret) {
+          sitetest_count_finished++;
+          if (sitetest_count_finished >= sitetest_count_totol) {
+            btn_obj.text("测试完成").attr("disabled", false);
+          }
+        }
+      })
     }
-    $("#sitetest_btn").text("测试").attr("disabled", false);
   });
 
 </script>

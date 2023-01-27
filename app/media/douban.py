@@ -132,7 +132,7 @@ class DouBan:
                 douban_info["actors"] = celebrities.get("actors")
             return douban_info
 
-    def get_douban_wish(self, dtype, userid, page, wait=False):
+    def get_douban_wish(self, dtype, userid, start, wait=False):
         """
         获取豆瓣想看列表数据
         """
@@ -141,11 +141,11 @@ class DouBan:
             log.info("【Douban】随机休眠：%s 秒" % time)
             sleep(time)
         if dtype == "do":
-            web_infos = self.doubanweb.do(cookie=self.cookie, userid=userid, start=page)
+            web_infos = self.doubanweb.do(cookie=self.cookie, userid=userid, start=start)
         elif dtype == "collect":
-            web_infos = self.doubanweb.collect(cookie=self.cookie, userid=userid, start=page)
+            web_infos = self.doubanweb.collect(cookie=self.cookie, userid=userid, start=start)
         else:
-            web_infos = self.doubanweb.wish(cookie=self.cookie, userid=userid, start=page)
+            web_infos = self.doubanweb.wish(cookie=self.cookie, userid=userid, start=start)
         if not web_infos:
             return []
         for web_info in web_infos:
@@ -159,7 +159,7 @@ class DouBan:
             sleep(time)
         return self.doubanweb.user(cookie=self.cookie, userid=userid)
 
-    def search_douban_medias(self, keyword, mtype: MediaType = None, num=20, season=None, episode=None):
+    def search_douban_medias(self, keyword, mtype: MediaType = None, season=None, episode=None, page=1):
         """
         根据关键字搜索豆瓣，返回可能的标题和年份信息
         """
@@ -201,7 +201,7 @@ class DouBan:
             if meta_info not in ret_medias:
                 ret_medias.append(meta_info)
 
-        return ret_medias[:num]
+        return ret_medias[(page - 1) * 20:page * 20]
 
     def get_media_detail_from_web(self, doubanid):
         """
@@ -359,6 +359,8 @@ class DouBan:
                 poster_path = info.get('cover', {}).get("url")
                 if not poster_path:
                     poster_path = info.get('cover_url')
+                if poster_path:
+                    poster_path = poster_path.replace("s_ratio_poster", "m_ratio_poster")
                 # 标题
                 title = info.get('title')
                 if not title or not poster_path:
@@ -368,8 +370,16 @@ class DouBan:
                 if not year and overview:
                     if overview.split("/")[0].strip().isdigit():
                         year = overview.split("/")[0].strip()
-                ret_list.append({'id': rid, 'title': title, 'release_date': year, 'vote_average': vote_average,
-                                 'poster_path': poster_path, 'overview': overview})
+                ret_list.append({
+                    'id': "DB:%s" % rid,
+                    'orgid': rid,
+                    'title': title,
+                    'type': 'MOV',
+                    'year': year[:4] if year else "",
+                    'vote': vote_average,
+                    'image': poster_path,
+                    'overview': overview
+                })
             except Exception as e:
                 ExceptionUtils.exception_traceback(e)
         return ret_list
@@ -395,14 +405,24 @@ class DouBan:
                 year = info.get('year')
                 # 海报
                 poster_path = info.get('pic', {}).get("normal")
+                if poster_path:
+                    poster_path = poster_path.replace("s_ratio_poster", "m_ratio_poster")
                 # 标题
                 title = info.get('title')
                 if not title or not poster_path:
                     continue
                 # 简介
                 overview = info.get("comment") or ""
-                ret_list.append({'id': rid, 'name': title, 'first_air_date': year, 'vote_average': vote_average,
-                                 'poster_path': poster_path, 'overview': overview})
+                ret_list.append({
+                    'id': "DB:%s" % rid,
+                    'orgid': rid,
+                    'title': title,
+                    'type': 'TV',
+                    'year': year[:4] if year else "",
+                    'vote': vote_average,
+                    'image': poster_path,
+                    'overview': overview
+                })
             except Exception as e:
                 ExceptionUtils.exception_traceback(e)
         return ret_list
