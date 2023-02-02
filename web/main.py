@@ -125,7 +125,8 @@ def login():
         RestypeDict = ModuleConf.TORRENT_SEARCH_PARAMS.get("restype")
         PixDict = ModuleConf.TORRENT_SEARCH_PARAMS.get("pix")
         SiteFavicons = Sites().get_site_favicon()
-        SiteDict = Indexer().get_indexer_hash_dict()
+        Indexers = Indexer().get_indexers()
+        SearchSource = "douban" if Config().get_config("laboratory").get("use_douban_titles") else "tmdb"
         return render_template('navigation.html',
                                GoPage=GoPage,
                                UserName=userinfo.username,
@@ -138,7 +139,8 @@ def login():
                                SyncMod=SyncMod,
                                SiteFavicons=SiteFavicons,
                                RmtModeDict=RmtModeDict,
-                               SiteDict=SiteDict)
+                               Indexers=Indexers,
+                               SearchSource=SearchSource)
 
     def redirect_to_login(errmsg=''):
         """
@@ -394,6 +396,7 @@ def recommend():
     TmdbId = request.args.get("tmdbid") or ""
     PersonId = request.args.get("personid") or ""
     Keyword = request.args.get("keyword") or ""
+    Source = request.args.get("source") or ""
     return render_template("discovery/recommend.html",
                            Type=Type,
                            SubType=SubType,
@@ -403,37 +406,68 @@ def recommend():
                            TmdbId=TmdbId,
                            PersonId=PersonId,
                            SubTitle=SubTitle,
-                           Keyword=Keyword)
+                           Keyword=Keyword,
+                           Source=Source)
 
 
-# 电影推荐页面
-@App.route('/discovery_movie', methods=['POST', 'GET'])
+# 推荐页面
+@App.route('/ranking', methods=['POST', 'GET'])
 @login_required
-def discovery_movie():
-    return render_template("discovery/discovery.html",
-                           DiscoveryType="MOV")
+def ranking():
+    return render_template("discovery/ranking.html",
+                           DiscoveryType="RANKING")
 
 
-# 电视剧推荐页面
-@App.route('/discovery_tv', methods=['POST', 'GET'])
+# 豆瓣电影
+@App.route('/douban_movie', methods=['POST', 'GET'])
 @login_required
-def discovery_tv():
-    return render_template("discovery/discovery.html",
-                           DiscoveryType="TV")
+def douban_movie():
+    return render_template("discovery/recommend.html",
+                           Type="DOUBANTAG",
+                           SubType="MOV",
+                           Title="豆瓣电影")
+
+
+# 豆瓣电视剧
+@App.route('/douban_tv', methods=['POST', 'GET'])
+@login_required
+def douban_tv():
+    return render_template("discovery/recommend.html",
+                           Type="DOUBANTAG",
+                           SubType="TV",
+                           Title="豆瓣电视剧")
+
+
+@App.route('/tmdb_movie', methods=['POST', 'GET'])
+@login_required
+def tmdb_movie():
+    return render_template("discovery/recommend.html",
+                           Type="DISCOVER",
+                           SubType="MOV",
+                           Title="TMDB电影")
+
+
+@App.route('/tmdb_tv', methods=['POST', 'GET'])
+@login_required
+def tmdb_tv():
+    return render_template("discovery/recommend.html",
+                           Type="DISCOVER",
+                           SubType="TV",
+                           Title="TMDB电视剧")
 
 
 # Bangumi每日放送
-@App.route('/discovery_bangumi', methods=['POST', 'GET'])
+@App.route('/bangumi', methods=['POST', 'GET'])
 @login_required
 def discovery_bangumi():
-    return render_template("discovery/discovery.html",
+    return render_template("discovery/ranking.html",
                            DiscoveryType="BANGUMI")
 
 
 # 媒体详情页面
-@App.route('/discovery_detail', methods=['POST', 'GET'])
+@App.route('/media_detail', methods=['POST', 'GET'])
 @login_required
-def discovery_detail():
+def media_detail():
     TmdbId = request.args.get("id")
     Type = request.args.get("type")
     return render_template("discovery/mediainfo.html",
@@ -471,10 +505,11 @@ def downloading():
 @App.route('/downloaded', methods=['POST', 'GET'])
 @login_required
 def downloaded():
-    Items = WebAction().get_downloaded({"page": 1}).get("Items")
-    return render_template("download/downloaded.html",
-                           Count=len(Items),
-                           Items=Items)
+    CurrentPage = request.args.get("page") or 1
+    return render_template("discovery/recommend.html",
+                           Type='DOWNLOADED',
+                           Title='近期下载',
+                           CurrentPage=CurrentPage)
 
 
 @App.route('/torrent_remove', methods=['POST', 'GET'])

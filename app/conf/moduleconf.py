@@ -5,14 +5,15 @@ from app.utils.types import *
 class ModuleConf(object):
     # 菜单对应关系，配置WeChat应用中配置的菜单ID与执行命令的对应关系，需要手工修改
     # 菜单序号在https://work.weixin.qq.com/wework_admin/frame#apps 应用自定义菜单中维护，然后看日志输出的菜单序号是啥（按顺利能猜到的）....
-    # 命令对应关系：/ptt 下载文件转移；/ptr 删种；/pts 站点签到；/rst 目录同步；/rss RSS下载
+    # 命令对应关系：/ptt 下载文件转移；/ptr 删种；/pts 站点签到；/rst 目录同步；/rss RSS下载；/udt 系统更新
     WECHAT_MENU = {
         '_0_0': '/ptt',
         '_0_1': '/ptr',
         '_0_2': '/rss',
         '_1_0': '/rst',
         '_1_1': '/db',
-        '_2_0': '/pts'
+        '_2_0': '/pts',
+        '_2_1': '/udt'
     }
 
     # 全量转移模式
@@ -697,7 +698,7 @@ class ModuleConf(object):
                     "type": "text",
                     "placeholder": "http://127.0.0.1:32400"
                 },
-                "api_key": {
+                "token": {
                     "id": "plex.token",
                     "required": False,
                     "title": "X-Plex-Token",
@@ -743,7 +744,7 @@ class ModuleConf(object):
                     "id": "jackett.host",
                     "required": True,
                     "title": "Jackett地址",
-                    "tooltip": "Jackett访问地址和端口，如为https需加https://前缀",
+                    "tooltip": "Jackett访问地址和端口，如为https需加https://前缀。注意需要先在Jackett中添加indexer，才能正常测试通过和使用",
                     "type": "text",
                     "placeholder": "http://127.0.0.1:9117"
                 },
@@ -775,7 +776,7 @@ class ModuleConf(object):
                     "id": "prowlarr.host",
                     "required": True,
                     "title": "Prowlarr地址",
-                    "tooltip": "Prowlarr访问地址和端口，如为https需加https://前缀",
+                    "tooltip": "Prowlarr访问地址和端口，如为https需加https://前缀。注意需要先在Prowlarr中添加搜刮器，同时勾选所有搜刮器后搜索一次，才能正常测试通过和使用",
                     "type": "text",
                     "placeholder": "http://127.0.0.1:9696"
                 },

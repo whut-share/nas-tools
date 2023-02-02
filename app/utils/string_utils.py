@@ -1,4 +1,5 @@
 import bisect
+import datetime
 import hashlib
 import random
 import re
@@ -69,6 +70,8 @@ class StringUtils:
         """
         判断是否含有中文
         """
+        if isinstance(word, list):
+            word = " ".join(word)
         chn = re.compile(r'[\u4e00-\u9fff]')
         if chn.search(word):
             return True
@@ -156,19 +159,26 @@ class StringUtils:
         # 需要忽略的特殊字符
         CONVERT_EMPTY_CHARS = r"[、.。,，·:：;；!！'’\"“”()（）\[\]【】「」\-——\+\|\\_/&#～~]"
         if not text:
-            return ""
-        text = re.sub(r"[\u200B-\u200D\uFEFF]", "", re.sub(r"%s" % CONVERT_EMPTY_CHARS, replace_word, text),
-                      flags=re.IGNORECASE)
-        if not allow_space:
-            return re.sub(r"\s+", "", text)
+            return text
+        if not isinstance(text, list):
+            text = re.sub(r"[\u200B-\u200D\uFEFF]",
+                          "",
+                          re.sub(r"%s" % CONVERT_EMPTY_CHARS, replace_word, text),
+                          flags=re.IGNORECASE)
+            if not allow_space:
+                return re.sub(r"\s+", "", text)
+            else:
+                return re.sub(r"\s+", " ", text).strip()
         else:
-            return re.sub(r"\s+", " ", text).strip()
+            return [StringUtils.handler_special_chars(x) for x in text]
 
     @staticmethod
     def str_filesize(size, pre=2):
         """
         将字节计算为文件大小描述（带单位的格式化后返回）
         """
+        if not size:
+            return size
         size = re.sub(r"\s|B|iB", "", str(size), re.I)
         if size.replace(".", "").isdigit():
             try:
@@ -327,6 +337,20 @@ class StringUtils:
         except Exception as e:
             ExceptionUtils.exception_traceback(e)
             return datetime_str
+
+    @staticmethod
+    def timestamp_to_date(timestamp, date_format='%Y-%m-%d %H:%M:%S'):
+        """
+        时间戳转日期
+        :param timestamp:
+        :param date_format:
+        :return:
+        """
+        try:
+            return datetime.datetime.fromtimestamp(timestamp).strftime(date_format)
+        except Exception as e:
+            ExceptionUtils.exception_traceback(e)
+            return timestamp
 
     @staticmethod
     def to_bool(text, default_val: bool = False) -> bool:

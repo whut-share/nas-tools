@@ -1,3 +1,4 @@
+import copy
 import datetime
 import time
 
@@ -7,6 +8,7 @@ from app.indexer.client._base import _IIndexClient
 from app.indexer.client._rarbg import Rarbg
 from app.indexer.client._render_spider import RenderSpider
 from app.indexer.client._spider import TorrentSpider
+from app.indexer.client._tnode import TNodeSpider
 from app.sites import Sites
 from app.utils import StringUtils
 from app.utils.types import SearchType, IndexerType
@@ -65,7 +67,7 @@ class BuiltinIndexer(_IIndexClient):
                 parser = public_site.get("parser")
             else:
                 is_public = False
-                proxy = True if site.get("proxy") == "Y" else False
+                proxy = site.get("proxy")
                 language = None
                 render = None
                 parser = None
@@ -121,23 +123,28 @@ class BuiltinIndexer(_IIndexClient):
         """
         if not indexer or not key_word:
             return None
-        if filter_args is None:
-            filter_args = {}
         # 不是配置的索引站点过滤掉
         indexer_sites = Config().get_config("pt").get("indexer_sites") or []
         if indexer_sites and indexer.id not in indexer_sites:
             return []
+        # fix 共用同一个dict时会导致某个站点的更新全局全效
+        if filter_args is None:
+            _filter_args = {}
+        else:
+            _filter_args = copy.deepcopy(filter_args)
         # 不在设定搜索范围的站点过滤掉
-        if filter_args.get("site") and indexer.name not in filter_args.get("site"):
+        if _filter_args.get("site") and indexer.name not in _filter_args.get("site"):
             return []
         # 搜索条件没有过滤规则时，使用站点的过滤规则
-        if not filter_args.get("rule") and indexer.rule:
-            filter_args.update({"rule": indexer.rule})
+        if not _filter_args.get("rule") and indexer.rule:
+            _filter_args.update({"rule": indexer.rule})
         # 计算耗时
         start_time = datetime.datetime.now()
         log.info(f"【{self.index_type}】开始检索Indexer：{indexer.name} ...")
         # 特殊符号处理
-        search_word = StringUtils.handler_special_chars(text=key_word, replace_word=" ", allow_space=True)
+        search_word = StringUtils.handler_special_chars(text=key_word,
+                                                        replace_word=" ",
+                                                        allow_space=True)
         # 避免对英文站搜索中文
         if indexer.language == "en" and StringUtils.is_chinese(search_word):
             log.warn(f"【{self.index_type}】{indexer.name} 无法使用中文名搜索")
@@ -147,10 +154,16 @@ class BuiltinIndexer(_IIndexClient):
             if indexer.parser == "Rarbg":
                 imdb_id = match_media.imdb_id if match_media else None
                 result_array = Rarbg().search(keyword=search_word, indexer=indexer, imdb_id=imdb_id)
+            elif indexer.parser == "TNodeSpider":
+                result_array = TNodeSpider(indexer=indexer).search(keyword=search_word)
             elif indexer.parser == "RenderSpider":
-                result_array = RenderSpider().search(keyword=search_word, indexer=indexer)
+                result_array = RenderSpider().search(keyword=search_word,
+                                                     indexer=indexer,
+                                                     mtype=match_media.type if match_media else None)
             else:
-                result_array = self.__spider_search(keyword=search_word, indexer=indexer)
+                result_array = self.__spider_search(keyword=search_word,
+                                                    indexer=indexer,
+                                                    mtype=match_media.type if match_media else None)
         except Exception as err:
             print(str(err))
         if len(result_array) == 0:
@@ -162,7 +175,7 @@ class BuiltinIndexer(_IIndexClient):
             return self.filter_search_results(result_array=result_array,
                                               order_seq=order_seq,
                                               indexer=indexer,
-                                              filter_args=filter_args,
+                                              filter_args=_filter_args,
                                               match_media=match_media,
                                               start_time=start_time)
 
@@ -179,19 +192,22 @@ class BuiltinIndexer(_IIndexClient):
             return RenderSpider().search(keyword=keyword,
                                          indexer=indexer,
                                          page=page)
+        elif indexer.parser == "TNodeSpider":
+            return TNodeSpider(indexer=indexer).search(keyword=keyword, page=page)
         return self.__spider_search(indexer=indexer,
                                     page=page,
                                     keyword=keyword)
 
     @staticmethod
-    def __spider_search(indexer, page=None, keyword=None, timeout=30):
+    def __spider_search(indexer, keyword=None, page=None, mtype=None, timeout=30):
         """
         根据关键字搜索单个站点
         """
         spider = TorrentSpider()
         spider.setparam(indexer=indexer,
                         keyword=keyword,
-                        page=page)
+                        page=page,
+                        mtype=mtype)
         spider.start()
         # 循环判断是否获取到数据
         sleep_count = 0

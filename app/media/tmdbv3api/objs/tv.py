@@ -29,7 +29,7 @@ class TV(TMDb):
         "alternative_titles": "/tv/%s/alternative_titles",
         "credits": "/tv/%s/credits",
         "discover": "/discover/tv",
-        "images": "/tv/%s/images",
+        "images": "/tv/%s/images"
     }
 
     def details(

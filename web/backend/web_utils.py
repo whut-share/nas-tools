@@ -1,13 +1,8 @@
 import cn2an
 
-from app.media import Media
-from app.media.bangumi import Bangumi
-from app.media.douban import DouBan
+from app.media import Media, Bangumi, DouBan
 from app.media.meta import MetaInfo
-from app.utils import StringUtils
-from app.utils.exception_utils import ExceptionUtils
-from app.utils.http_utils import RequestUtils
-from app.utils.system_utils import SystemUtils
+from app.utils import StringUtils, ExceptionUtils, SystemUtils, RequestUtils
 from app.utils.types import MediaType
 from config import Config
 from version import APP_VERSION
@@ -77,10 +72,7 @@ class WebUtils:
             doubanid = mediaid[3:]
             info = DouBan().get_douban_detail(doubanid=doubanid, mtype=mtype)
             if not info:
-                return {
-                    "code": 1,
-                    "msg": "无法查询到豆瓣信息"
-                }
+                return None
             title = info.get("title")
             original_title = info.get("original_title")
             year = info.get("year")
@@ -97,26 +89,24 @@ class WebUtils:
             bangumiid = str(mediaid)[3:]
             info = Bangumi().detail(bid=bangumiid)
             if not info:
-                return {
-                    "code": 1,
-                    "msg": "无法查询Bangumi信息"
-                }
+                return None
             title = info.get("name")
             title_cn = info.get("name_cn")
             year = info.get("date")[:4] if info.get("date") else ""
-            media_info = Media().get_media_info(title=f"{title} {year}", mtype=MediaType.TV)
+            media_info = Media().get_media_info(title=f"{title} {year}",
+                                                mtype=MediaType.TV,
+                                                append_to_response="all")
             if not media_info or not media_info.tmdb_info:
-                media_info = Media().get_media_info(title=f"{title_cn} {year}", mtype=MediaType.TV)
+                media_info = Media().get_media_info(title=f"{title_cn} {year}",
+                                                    mtype=MediaType.TV,
+                                                    append_to_response="all")
         else:
             # TMDB
             info = Media().get_tmdb_info(tmdbid=mediaid,
                                          mtype=mtype,
                                          append_to_response="all")
             if not info:
-                return {
-                    "code": 1,
-                    "msg": "无法查询TMDB信息"
-                }
+                return None
             media_info = MetaInfo(title=info.get("title") if mtype == MediaType.MOVIE else info.get("name"))
             media_info.set_tmdb_info(info)
 
@@ -133,28 +123,30 @@ class WebUtils:
         """
         if not keyword:
             return []
+        mtype, key_word, season_num, episode_num, _, content = StringUtils.get_keyword_from_string(keyword)
         if source == "tmdb":
             use_douban_titles = False
+        elif source == "douban":
+            use_douban_titles = True
         else:
             use_douban_titles = Config().get_config("laboratory").get("use_douban_titles")
         if use_douban_titles:
-            mtype, key_word, season_num, episode_num, _, _ = StringUtils.get_keyword_from_string(keyword)
             medias = DouBan().search_douban_medias(keyword=key_word,
                                                    mtype=mtype,
                                                    season=season_num,
                                                    episode=episode_num,
                                                    page=page)
         else:
-            meta_info = MetaInfo(title=keyword)
+            meta_info = MetaInfo(title=content)
             tmdbinfos = Media().get_tmdb_infos(title=meta_info.get_name(),
                                                year=meta_info.year,
-                                               mtype=meta_info.type,
+                                               mtype=mtype,
                                                page=page)
             medias = []
             for tmdbinfo in tmdbinfos:
                 tmp_info = MetaInfo(title=keyword)
                 tmp_info.set_tmdb_info(tmdbinfo)
-                if meta_info.type == MediaType.TV and tmp_info.type != MediaType.TV:
+                if meta_info.type != MediaType.MOVIE and tmp_info.type == MediaType.MOVIE:
                     continue
                 if tmp_info.begin_season:
                     tmp_info.title = "%s 第%s季" % (tmp_info.title, cn2an.an2cn(meta_info.begin_season, mode='low'))

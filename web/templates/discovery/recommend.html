@@ -13,26 +13,27 @@
 <!-- 业务页面代码 -->
 <div class="page-body">
   <div class="container-xl">
-    <div class="row" id="recommend_content">
+    <div class="d-grid gap-3 grid-media-card" id="recommend_content">
     </div>
   </div>
 </div>
 <script type="text/javascript">
   // 当前页码
-  var CurrentPage = {{ CurrentPage }};
+  CurrentPage = {{ CurrentPage or 1 }};
 
-  // 类型 MOV/TV/BANGUMI
-  var Type = '{{ Type }}';
+  // 类型
+  // MOV/TV/BANGUMI/SEARCH/DOWNLOADED/TRENDING/DISCOVER/DOUBANTAG
+  Type = '{{ Type or "" }}';
 
   // 子类型
-  var SubType = '{{ SubType }}';
+  SubType = '{{ SubType or "" }}';
 
   // 标题
-  var Title = '{{ Title }}';
+  Title = '{{ Title or "" }}';
   $("#recommend_title").text(Title);
 
   // 子标题
-  var SubTitle = '{{ SubTitle or "" }}';
+  SubTitle = '{{ SubTitle or "" }}';
   if (SubTitle) {
     $("#recommend_subtitle").text(SubTitle).show();
   } else {
@@ -40,22 +41,25 @@
   }
 
   // 星期
-  var Week = '{{ Week }}';
+  Week = '{{ Week or "" }}';
 
   // TMDBID
-  var TmdbId = '{{ TmdbId }}';
+  TmdbId = '{{ TmdbId or "" }}';
 
   // 演员ID
-  var PersonId = '{{ PersonId }}';
+  PersonId = '{{ PersonId or "" }}';
 
   // 关键字
-  var Keyword = '{{ Keyword }}';
+  Keyword = '{{ Keyword or "" }}';
+
+  // 来源
+  Source = '{{ Source or "" }}';
 
   // 插入N个占位卡片 代替loading动画
   var page_card_num = 20;
   function add_loading_card_placeholder() {
     for (let i = 0; i < page_card_num; i++) {
-      let html = '<div class="mb-3 col-6 col-md-3 col-xl-2" id="loading_card_placeholder_' + i + '"><normal-card-placeholder></normal-card-placeholder></div>';
+      let html = '<div id="loading_card_placeholder_' + i + '"><normal-card-placeholder></normal-card-placeholder></div>';
       $("#recommend_content").append(html);
     }
   }
@@ -83,7 +87,8 @@
       "week": Week,
       "tmdbid": TmdbId,
       "personid": PersonId,
-      "keyword": Keyword
+      "keyword": Keyword,
+      "source": Source
     }, function (ret) {
       if (ret.Items.length > 0) {
         // 记录页码
@@ -93,32 +98,46 @@
         page_card_num = ret.Items.length;
       } else {
         if (CurrentPage == 1) {
-          $("#recommend_content").html($("#no_recommend_html").text());
+          $("#recommend_content").removeClass("grid-media-card").html($("#no_recommend_html").text());
         }
       }
       del_loading_card_placeholder();
       // 插入HTML
       for (let i = 0; i < ret.Items.length; i++) {
         let item = ret.Items[i];
-        let html = '';
-        html += '<div class="mb-3 col-6 col-md-3 col-xl-2">';
-          html += `<normal-card
-                    card-tmdbId="${item.id}"
-                    card-pageType="${item.type}"
-                    card-showSub="1"
-                    card-image="${item.image}"
-                    card-weekday="${item.weekday}"
-                    card-fav="${item.fav}"
-                    card-vote="${item.vote}"
-                    card-year="${item.year}"
-                    card-title="${item.title}"
-                    card-overview="${item.overview}"
-                   ></normal-card>`;
-        html += '</div>';
+        let html = `<normal-card
+                      card-tmdbId="${item.id}"
+                      card-mediatype="${item.type}"
+                      card-showSub="1"
+                      card-image="${item.image}"
+                      card-weekday="${item.weekday}"
+                      card-fav="${item.fav}"
+                      card-vote="${item.vote}"
+                      card-year="${item.year}"
+                      card-title="${item.title}"
+                      card-overview="${item.overview}"
+                      card-restype="${item.media_type}"
+                      card-date="${item.date}"
+                      card-site="${item.site}"
+                    ></normal-card>`;
         $("#recommend_content").append(html);
       }
       window_history();
+      if (ret.Items.length > 0) {
+        loading_data_max();
+      }
     });
+  }
+
+  // 如果没有滚动条 继续加载
+  function loading_data_max() {
+    const page_wrapper = document.querySelector(".page-wrapper");
+    if (page_wrapper && page_wrapper.scrollHeight <= page_wrapper.clientHeight) {
+      const normal_card = document.querySelectorAll("normal-card");
+      if (normal_card && normal_card.length >= 20) {
+        loading_data();
+      }
+    }
   }
 
   $(document).ready(function () {
@@ -132,6 +151,7 @@
   // 后退时sessionStorage.CurrentPage 未被清除, 则更新当前页码
   if (sessionStorage.CurrentPage) {
     CurrentPage = sessionStorage.CurrentPage;
+    loading_data_max();
   } else {
     // 否则初始化数据
     loading_data();
